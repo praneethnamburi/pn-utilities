@@ -10,6 +10,7 @@ Communication (with external processes), and Tools for sampled data
 
 ## Tool descriptions
 Inheritance: (Special cases where I needed to tweak inheritance)  
+
     * AddMethods      - (Decorator) Add methods to a class
     * Mixin           - (Decorator) Grab methods from another class, and deepcopy list/dict class attributes
     * port_properties - Implement containers with automatic method routing
