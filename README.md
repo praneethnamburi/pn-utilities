@@ -69,7 +69,8 @@ Communication (with external processes), and Tools for sampled data
 
 
 ## Usage
-Create a conda environment with numpy, scipy, multiprocess and blinker  
+Create a conda environment with numpy, scipy, multiprocess and blinker
+
     conda create -n pntools-test python=3.9.2 numpy scipy blinker  
     conda activate pntools-test  
     conda install -c conda-forge multiprocess  
