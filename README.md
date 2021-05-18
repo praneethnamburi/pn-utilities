@@ -61,16 +61,23 @@ Communication (with external processes), and Tools for sampled data
     * Spawn          - Use Multiprocessing to run a function in another process (intended for using matplotlib from blender)
     * spawn_commands - Spawn multiple detached processes.
 
-**Tools for sampled data:**  
+**Sampled submodule** (Tools for working with sampled data):
 
-    * SampledTime - Encapsulates time and sampling rate
-    * Interval    - Start and stop times with extracting samples at different rates
-    * SampledData - Encapsulate and manipulate sampled data using signal processing algorithms
+    * Time      - Encapsulates time and sampling rate
+    * Interval  - Start and stop times with extracting samples at different rates
+    * Data      - Encapsulate and manipulate sampled data using signal processing algorithms
 
 
 ## Usage
-Create a conda environment with numpy, scipy, multiprocess and blinker
+Create a conda environment with numpy, scipy, multiprocess and blinker:
 
     conda create -n pntools-test python=3.9.2 numpy scipy blinker  
     conda activate pntools-test  
     conda install -c conda-forge multiprocess  
+
+For using the video module:
+    
+    conda install matplotlib
+    pip install decord
+    pip install ffmpeg-python
+    python -m pip install git+https://github.com/pytube/pytube
