@@ -16,12 +16,20 @@ import fnmatch
 import time
 from copy import deepcopy
 from timeit import default_timer as timer
+import collections
 
 import multiprocess
 import numpy as np
 import blinker
 
 from . import sampled
+
+try: # this is for the benefit of bpn and other blender-based modules that use pntools
+    import bpy
+    BLENDER_MODE = True
+except ImportError:
+    BLENDER_MODE = False
+
 
 ## Inheritance
 class AddMethods:

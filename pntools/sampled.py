@@ -321,3 +321,22 @@ class Data: # Signal processing
     def t(self):
         n_samples = len(self)
         return np.linspace(self._t0, self._t0 + (n_samples-1)/self.sr, n_samples)
+
+
+class Event(Interval):
+    def __init__(self, start, end, **kwargs):
+        """
+        kwargs:
+        labels (list of strings) - hastags defining the event
+        """
+        self.labels = kwargs.pop('labels', [])
+        super().__init__(start, end, **kwargs)
+
+
+class Events(list):
+    def append(self, key):
+        assert isinstance(key, Event)
+        super().append(key)
+    
+    def get(self, label):
+        return Events([e for e in self if label in e.labels])

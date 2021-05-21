@@ -5,11 +5,11 @@ import os
 import subprocess
 import urllib
 import time
+from datetime import timedelta
 
 import matplotlib as mpl
 from matplotlib import pyplot as plt
 from decord import VideoReader
-import multiprocess
 import ffmpeg
 from pytube import YouTube
 
@@ -37,6 +37,11 @@ class View(VideoReader):
         Drawing shapes
     """
     def __init__(self, vid_name):
+        if not os.path.exists(vid_name):
+            # try looking in the CLIP FOLDER
+            vid_name = os.path.join(CLIP_FOLDER, os.path.split(vid_name)[-1])
+        
+        assert os.path.exists(vid_name)
         self.vid_name = vid_name
         with open(vid_name, 'rb') as f:
             super().__init__(f)
@@ -54,7 +59,7 @@ class View(VideoReader):
                 self._bindings_removed[this_param_name] = key
 
         self._fig, self._ax = plt.subplots()
-        self.im = self._ax.imshow(self[self._current_frame].asnumpy().astype(float)/255)
+        self.im = self._ax.imshow(self[self._current_frame].asnumpy())
         self.cid = self._fig.canvas.mpl_connect('key_press_event', self)
         self.closeid = self._fig.canvas.mpl_connect('close_event', self)
         self.nframes = len(self)
@@ -101,11 +106,21 @@ class View(VideoReader):
 
     def update_image(self):
         self.im.set_data(self[self._current_frame].asnumpy())
-        self._ax.set_title('Frame {:d}/{:d}, {:f} fps'.format(self._current_frame, self.nframes, self.fps))
+        
+        self._ax.set_title('Frame {:d}/{:d}, {:f} fps, '.format(self._current_frame, self.nframes, self.fps) + str(timedelta(seconds=self._current_frame/self.fps)))
         plt.draw()
 
+    def extract_clip(self, start_frame, end_frame, fname_out=None):
+        start_time = float(start_frame)/self.fps
+        end_time = float(end_frame)/self.fps
+        dur = end_time - start_time
+        if fname_out is None:
+            fname_out = os.path.join(CLIP_FOLDER, os.path.splitext(self.vid_name)[0] + '_s{:.3f}_e{:.3f}.mp4'.format(start_time, end_time))
+        ffmpeg.input(self.vid_name, ss=start_time).output(fname_out, vcodec='h264_nvenc', t=dur).run()
+        return fname_out
+    
 
-def download(url, start_time=None, end_time=None, dur=None, keep_full_file=False):
+def download(url, start_time=None, end_time=None, dur=None, full_file=False):
     """
     Download a clip from a YouTube video.
     Downloads to the path specified in the module variable CLIP_FOLDER
@@ -127,7 +142,8 @@ def download(url, start_time=None, end_time=None, dur=None, keep_full_file=False
 
     ys = yvid.streams.get_highest_resolution()
     fname_in = ys.download(CLIP_FOLDER, url.split('?v=')[-1])
-    print(fname_in)
+    if full_file: # otherwise clip the video
+        return fname_in
 
     # specify interval
     if start_time is None: # manually find the start and stop times
@@ -146,9 +162,6 @@ def download(url, start_time=None, end_time=None, dur=None, keep_full_file=False
     # clip video
     fname_out = os.path.join(CLIP_FOLDER, os.path.splitext(fname_in)[0] + '_s{:.3f}_e{:.3f}.mp4'.format(start_time, end_time))
     ffmpeg.input(fname_in, ss=start_time).output(fname_out, vcodec='h264_nvenc', t=dur).run()
-
-    if not keep_full_file:
-        os.remove(fname_in)
     
     return fname_out
 

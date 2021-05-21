@@ -3,12 +3,26 @@
 Praneeth's tools for making life easy while coding in python. These utilities only depend on packages available through conda or pypi.
 
 ## Organization
-The tools are organized into the following categories:
+General tools are in __init__.py and and organized into the following categories:
 Inheritance, Event handlers, File system, Package management, 
 Introspection, Input management, Code development,
-Communication (with external processes), and Tools for sampled data
+Communication (with external processes).
+
+### Submodules
+
+**sampled** (Tools for working with sampled data):
+
+    * Time      - Encapsulates time and sampling rate
+    * Interval  - Start and stop times with extracting samples at different rates
+    * Data      - Encapsulate and manipulate sampled data using signal processing algorithms
+
+**video** (Tools for working with video data):
+
+    * download  - Download a video from YouTube, and extract a clip
+    * View      - Browse videos frame by frame
 
 ## Tool descriptions
+
 **Inheritance:** (Special cases where I needed to tweak inheritance)  
 
     * AddMethods      - (Decorator) Add methods to a class
@@ -61,11 +75,6 @@ Communication (with external processes), and Tools for sampled data
     * Spawn          - Use Multiprocessing to run a function in another process (intended for using matplotlib from blender)
     * spawn_commands - Spawn multiple detached processes.
 
-**Sampled submodule** (Tools for working with sampled data):
-
-    * Time      - Encapsulates time and sampling rate
-    * Interval  - Start and stop times with extracting samples at different rates
-    * Data      - Encapsulate and manipulate sampled data using signal processing algorithms
 
 
 ## Usage
