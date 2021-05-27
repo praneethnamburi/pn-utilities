@@ -2,6 +2,7 @@
 Tools for working with sampled data
 """
 
+import collections
 import numpy as np
 from scipy.signal import hilbert, firwin, filtfilt, butter
 
@@ -111,6 +112,67 @@ class Time:
     def to_interval(self, zero=None, iter_rate=None):
         """Return an interval object with start and end times being the same"""
         return Interval(self, self, zero, self.sr, iter_rate)
+    
+    def __repr__(self):
+        return "time={:.3f} s, sample={}, sr={} Hz ".format(self.time, self.sample, self.sr) + super().__repr__()
+
+
+class Sequence:
+    """
+    Create a sequence of named time objects (collection).
+    Created for working with motion sequences / periodic data collected
+    from multiple modalities/devices where data is sampled at different
+    rates. 
+    Seqeuences of events in the real-world are observed through
+    different modalities, but there is only one 'base' time in the real
+    world, and each data acquistion modality is going to have its own
+    clock and sampling rate. I want to be able to refer to the
+    event/sequence in the real world.
+
+    Example:
+        normal_pitching = Sequence('start emg_start acc_start foot_off release end', input_sr=30.)
+        normal_pitching.append('00;05;57;26', '00;05;58;18', '00;06;00;20', '00;06;00;26', '00;06;00;29', '00;06;01;29')
+        normal_pitching[0].emg_start
+
+        n_zoom = normal_pitching.change_sr(25.) # when retrieving frames from zoom
+        n_canon = normal_pitching.change_sr(30.) # when retrieving frames from canon DSLR
+        n_motive = normal_pitching.change_sr(180.) # when working with motion capture videos
+        n_delsys = normal_pitching.change_sr(2000.) # when dealing with EMG data sampled at 2000 Hz
+        n_delsys[0].emg_start
+    """
+    def __init__(self, marker_names, input_sr=30., output_sr=180.):
+        self._marker_names = marker_names.split(' ')
+        self._template = collections.namedtuple('Sequence', marker_names)
+        self._data = []
+        self._input_sr = input_sr # sampling rate of timestamps that will be input
+        self._output_sr = output_sr
+    
+    def append(self, *args, **kwargs):
+        """Add a sequence to this collection."""
+        processed_args = []
+        for arg in args:
+            processed_args.append(self._process_inp(arg).change_sr(self._output_sr))
+        processed_kwargs = {}
+        for kwarg_name, kwarg in kwargs.items():
+            processed_kwargs[kwarg_name] = self._process_inp(kwarg).change_sr(self._output_sr)
+        self._data.append(self._template(*processed_args, **processed_kwargs))
+
+    def __getitem__(self, key):
+        """Retrieve from the _data list."""
+        return self._data[key]
+    
+    def change_sr(self, new_sr):
+        """Create a new sequence object where output sampling rate is new_sr"""
+        s = Sequence(self._marker_names, self._input_sr, new_sr)
+        for d in self._data:
+            s.append(**d._asdict())
+        return s
+
+    def _process_inp(self, inp):
+        if isinstance(inp, Time):
+            return inp # sr is ignored, superseded by input's sampling rate
+        return Time(inp, self._input_sr) # string, float, int or tuple. sr is ignored if tuple.
+
 
 class Interval:
     """
@@ -326,6 +388,8 @@ class Data: # Signal processing
 class Event(Interval):
     def __init__(self, start, end, **kwargs):
         """
+        Interval with labels.
+
         kwargs:
         labels (list of strings) - hastags defining the event
         """
@@ -334,9 +398,12 @@ class Event(Interval):
 
 
 class Events(list):
+    """List of event objects that can be selected by labels using the 'get' method."""
     def append(self, key):
         assert isinstance(key, Event)
         super().append(key)
     
     def get(self, label):
         return Events([e for e in self if label in e.labels])
+
+
