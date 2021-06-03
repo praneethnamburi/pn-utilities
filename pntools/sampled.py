@@ -129,6 +129,9 @@ class Sequence:
     clock and sampling rate. I want to be able to refer to the
     event/sequence in the real world.
 
+    Inputs:
+        marker_names - string of words separated by spaces, like input to namedtuple
+        input_sr     - sampling rate at which time will be specified
     Example:
         normal_pitching = Sequence('start emg_start acc_start foot_off release end', input_sr=30.)
         normal_pitching.append('00;05;57;26', '00;05;58;18', '00;06;00;20', '00;06;00;26', '00;06;00;29', '00;06;01;29')
@@ -139,34 +142,48 @@ class Sequence:
         n_motive = normal_pitching.change_sr(180.) # when working with motion capture videos
         n_delsys = normal_pitching.change_sr(2000.) # when dealing with EMG data sampled at 2000 Hz
         n_delsys[0].emg_start
+
+        n_zoom.all_labels()
     """
     def __init__(self, marker_names, input_sr=30., output_sr=180.):
-        self._marker_names = marker_names.split(' ')
+        self._marker_names = marker_names
         self._template = collections.namedtuple('Sequence', marker_names)
-        self._data = []
+        self._data = [] # each entry is a dictionary with ev and labels
         self._input_sr = input_sr # sampling rate of timestamps that will be input
         self._output_sr = output_sr
     
     def append(self, *args, **kwargs):
         """Add a sequence to this collection."""
+        labels = kwargs.pop('labels', [])
+        if isinstance(labels, str):
+            labels = [labels]
         processed_args = []
         for arg in args:
             processed_args.append(self._process_inp(arg).change_sr(self._output_sr))
         processed_kwargs = {}
         for kwarg_name, kwarg in kwargs.items():
             processed_kwargs[kwarg_name] = self._process_inp(kwarg).change_sr(self._output_sr)
-        self._data.append(self._template(*processed_args, **processed_kwargs))
+        self._data.append({'ev': self._template(*processed_args, **processed_kwargs), 'labels': labels})
 
     def __getitem__(self, key):
-        """Retrieve from the _data list."""
-        return self._data[key]
+        """Retrieve event from the _data list. This hides the labels."""
+        if isinstance(key, int):
+            return self._data[key]['ev']
+        elif isinstance(key, str):
+            return [d['ev'] for d in self._data if key in d['labels']]
     
-    def change_sr(self, new_sr):
+    def change_sr(self, new_sr): # rename to change_modality?
         """Create a new sequence object where output sampling rate is new_sr"""
         s = Sequence(self._marker_names, self._input_sr, new_sr)
         for d in self._data:
-            s.append(**d._asdict())
+            s.append(**d['ev']._asdict(), labels=d['labels'])
         return s
+
+    def all_labels(self):
+        ret = []
+        for d in self._data:
+            ret += d['labels']
+        return set(ret)
 
     def _process_inp(self, inp):
         if isinstance(inp, Time):
