@@ -599,8 +599,10 @@ class FileManager:
         self.base_dir = os.path.realpath(base_dir)
         self._files = {}
         self._filters = {}
+        self._inclusions = {}
+        self._exclusions = {}
     
-    def add(self, type_name, pattern_list):
+    def add(self, type_name, pattern_list, include=None, exclude=None):
         """
         Add a type of file with a given filter.
         e.g. fm.add('video', '*Camera*.avi')
@@ -611,6 +613,44 @@ class FileManager:
         for pattern in pattern_list:
             self._files[type_name] += find(pattern, path=self.base_dir)
         self._filters[type_name] = pattern_list
+        self._inclusions[type_name] = []
+        self._exclusions[type_name] = []
+
+        if include is not None:
+            if isinstance(include, str):
+                self._include(type_name, include)
+            else:
+                assert isinstance(include, (list, tuple))
+                for inc_str in include:
+                    assert isinstance(inc_str, str)
+                    self._include(type_name, inc_str)
+        
+        if exclude is not None:
+            if isinstance(exclude, str):
+                self._exclude(type_name, exclude)
+            else:
+                assert isinstance(exclude, (list, tuple))
+                for exc_str in exclude:
+                    assert isinstance(exc_str, str)
+                    self._exclude(type_name, exc_str)
+
+    def _include(self, type_name, inclusion_string):
+        """
+        Include a set of files from the list. Useful for choosing files in specific sub-folders.
+        Use this functionality using the add method.
+        """
+        assert type_name in self._files
+        self._files[type_name] = [fn for fn in self._files[type_name] if inclusion_string in fn]
+        self._inclusions[type_name].append(inclusion_string)
+
+    def _exclude(self, type_name, exclusion_string):
+        """
+        Exclude a set of files from the list. Useful for ignoring files in specific sub-folders.
+        Use this functionality using the add method.
+        """
+        assert type_name in self._files
+        self._files[type_name] = [fn for fn in self._files[type_name] if exclusion_string not in fn]
+        self._exclusions[type_name].append(exclusion_string)
 
     def __getitem__(self, key):
         assert key in self._files
