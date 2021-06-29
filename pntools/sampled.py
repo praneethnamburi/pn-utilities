@@ -403,6 +403,13 @@ class Data: # Signal processing
         proc_sig[nans]= np.interp(x(nans), x(~nans), proc_sig[~nans])
         return self._clone(proc_sig, ('instantaneous_phase', None))
 
+    def shift_baseline(self, offset): 
+        # you can use numpy broadcasting to shift each signal if multi-dimensional
+        return self._clone(self._sig - offset, ('shift_baseline', offset))
+    
+    def scale(self, scale_factor):
+        return self._clone(self._sig/scale_factor, ('scale', scale_factor))
+        
     def __len__(self):
         return np.shape(self._sig)[self.axis]
 
@@ -410,6 +417,15 @@ class Data: # Signal processing
     def t(self):
         n_samples = len(self)
         return np.linspace(self._t0, self._t0 + (n_samples-1)/self.sr, n_samples)
+    
+    def __getitem__(self, key): 
+        # NOTE: Generalize for multi-dimensional signals!
+        assert isinstance(key, Interval)
+        his = self._history + [('slice', key)]
+        offset = round(self._t0*self.sr)
+        proc_sig = self._sig.take(indices=range(key.start.sample-offset, key.end.sample-offset), axis=self.axis)
+        return self.__class__(proc_sig, self.sr, self.axis, his, key.start.time)
+
 
 
 class Event(Interval):
