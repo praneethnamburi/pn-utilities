@@ -1108,3 +1108,11 @@ def spawn_commands(cmds, nproc=3, verbose=False, retry=False, sleep_time=0.5, wa
             time.sleep(sleep_time)
 
     return all_proc
+
+
+## Dictionary
+class dotdict(dict):
+    """dot.notation access to dictionary attributes"""
+    __getattr__ = dict.get
+    __setattr__ = dict.__setitem__
+    __delattr__ = dict.__delitem__
