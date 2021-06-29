@@ -320,6 +320,8 @@ class Data: # Signal processing
         """
         axis (int) time axis
         t0 (float) time at start sample
+        NOTE: When inheriting from this class, if the parameters of the
+        __init__ method change, then make sure to rewrite the _clone method
         """
         self._sig = sig # assumes sig is uniformly resampled
         self.sr = sr
@@ -392,6 +394,14 @@ class Data: # Signal processing
     
     def highpass(self, cutoff, order=None):
         return self._butterfilt(cutoff, order, 'high')
+    
+    def interpnan(self):
+        def nan_helper(y):
+            return np.isnan(y), lambda z: z.nonzero()[0]
+        proc_sig = self._sig
+        nans, x= nan_helper(proc_sig)
+        proc_sig[nans]= np.interp(x(nans), x(~nans), proc_sig[~nans])
+        return self._clone(proc_sig, ('instantaneous_phase', None))
 
     def __len__(self):
         return np.shape(self._sig)[self.axis]
