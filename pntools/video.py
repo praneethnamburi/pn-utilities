@@ -110,13 +110,15 @@ class View(VideoReader):
         self._ax.set_title('Frame {:d}/{:d}, {:f} fps, '.format(self._current_frame, self.nframes, self.fps) + str(timedelta(seconds=self._current_frame/self.fps)))
         plt.draw()
 
-    def extract_clip(self, start_frame, end_frame, fname_out=None):
+    def extract_clip(self, start_frame, end_frame, fname_out=None, out_rate=None):
         start_time = float(start_frame)/self.fps
         end_time = float(end_frame)/self.fps
         dur = end_time - start_time
+        if out_rate is None:
+            out_rate = self.fps
         if fname_out is None:
             fname_out = os.path.join(CLIP_FOLDER, os.path.splitext(self.vid_name)[0] + '_s{:.3f}_e{:.3f}.mp4'.format(start_time, end_time))
-        ffmpeg.input(self.vid_name, ss=start_time).output(fname_out, vcodec='h264_nvenc', t=dur).run()
+        ffmpeg.input(self.vid_name, ss=start_time).output(fname_out, vcodec='h264_nvenc', t=dur, r=out_rate).run()
         return fname_out
     
 
