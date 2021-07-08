@@ -453,9 +453,37 @@ class Events(list):
 
 def interpnan(sig):
     # sig is a 1d NumPy array
+    assert np.ndim(sig) == 1
     def nan_helper(y):
         return np.isnan(y), lambda z: z.nonzero()[0]
     proc_sig = sig
     nans, x = nan_helper(proc_sig)
     proc_sig[nans]= np.interp(x(nans), x(~nans), proc_sig[~nans])
     return proc_sig
+
+def uniform_resample(time, sig, sr, t_min=None, t_max=None):
+    """
+    Uniformly resample a signal at a given sampling rate sr.
+    Ideally the sampling rate is determined by the smallest spacing of
+    time points.
+    Inputs:
+        time (list, 1d numpy array) is a non-decreasing array
+        sig (list, 1d numpy array)
+        sr (float) sampling rate in Hz
+        t_min (float) start time for the output array
+        t_max (float) end time for the output array
+    Returns:
+        pn.sampled.Data
+    """
+    assert len(time) == len(sig)
+    assert np.ndim(sig) == 1
+
+    if t_min is None: t_min = time[0]
+    if t_max is None: t_max = time[-1]
+
+    n_samples = int((t_max - t_min)*sr) + 1
+    t_max = t_min + (n_samples-1)/sr
+
+    t_proc = np.linspace(t_min, t_max, n_samples)
+    sig_proc = np.interp(t_proc, time, sig)
+    return Data(sig_proc, sr, t0=t_min)
