@@ -396,6 +396,7 @@ class Data: # Signal processing
         return self._butterfilt(cutoff, order, 'high')
     
     def interpnan(self):
+        # TODO: Generalize this to 2d data!! Use the module interpnan method
         def nan_helper(y):
             return np.isnan(y), lambda z: z.nonzero()[0]
         proc_sig = self._sig
@@ -450,3 +451,11 @@ class Events(list):
         return Events([e for e in self if label in e.labels])
 
 
+def interpnan(sig):
+    # sig is a 1d NumPy array
+    def nan_helper(y):
+        return np.isnan(y), lambda z: z.nonzero()[0]
+    proc_sig = sig
+    nans, x = nan_helper(proc_sig)
+    proc_sig[nans]= np.interp(x(nans), x(~nans), proc_sig[~nans])
+    return proc_sig
