@@ -1113,3 +1113,14 @@ class dotdict(dict):
     __getattr__ = dict.get
     __setattr__ = dict.__setitem__
     __delattr__ = dict.__delitem__
+
+
+## matplotlib-specific stuff
+if not BLENDER_MODE:
+    import matplotlib as mpl
+    mpl.rcParams['lines.linewidth'] = 0.75
+    def format_legend(ax):
+        """Set the legend labels using 'label' field in plot."""
+        box = ax.get_position()
+        ax.set_position([box.x0, box.y0, box.width*0.8, box.height])
+        ax.legend(loc='center left', bbox_to_anchor=(1, 0.5))
