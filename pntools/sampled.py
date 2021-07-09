@@ -201,7 +201,7 @@ class Interval:
     animation times -> |        |        |        |        |         <- [self.iter_rate, self._index, self.t_iter]
     Frame sampling is used to pick the nearest frame corresponding to the animation times
     Example:
-        intvl = ot.Interval(('00;09;51;03', 30), ('00;09;54;11', 30), sr=180, iter_rate=env.Key().fps)
+        intvl = Interval(('00;09;51;03', 30), ('00;09;54;11', 30), sr=180, iter_rate=env.Key().fps)
         intvl.iter_rate = 24 # say 24 fps for animation
         for nearest_sample, time, index in intvl:
             print((nearest_sample, time, index))
