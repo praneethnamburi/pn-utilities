@@ -363,7 +363,7 @@ class Data: # Signal processing
                 assert 'bandpass' in [h[0] for h in self._history]
                 lowpass = [h[1]['low'] for h in self._history if h[0] == 'bandpass'][0]
             assert isinstance(lowpass, (int, float)) # cutoff frequency
-            return self._clone(proc_sig, ('envelope_'+type)).lowpass(lowpass)
+            return self._clone(proc_sig, ('envelope_'+type, None)).lowpass(lowpass)
         return self._clone(proc_sig, ('envelope_'+type, None))
     
     def phase(self):
@@ -427,6 +427,22 @@ class Data: # Signal processing
         proc_sig = self._sig.take(indices=range(key.start.sample-offset, key.end.sample-offset), axis=self.axis)
         return self.__class__(proc_sig, self.sr, self.axis, his, key.start.time)
 
+    def apply_running_win(self, func, win_size=0.25, win_inc=0.1):
+        """
+        Process the signal using a running window by applying func to each window.
+        Returns:
+            Sampled data 
+        Example:
+            Extract RMS envelope
+            self.apply_running_win(lambda x: np.sqrt(np.mean(x**2)), win_size, win_inc)
+        """
+        win_size_samples = (round(win_size*self.sr)//2)*2 + 1 # ensure odd number of samples
+        win_inc_samples = round(win_inc*self.sr)
+        n_samples = len(self)
+        rw = RunningWin(n_samples, win_size_samples, win_inc_samples)
+        ret_sig = np.array([func(self._sig[r_win], axis=self.axis) for r_win in rw()])
+        ret_sr = self.sr/win_inc_samples
+        return Data(ret_sig, ret_sr, axis=self.axis, t0=self.t(rw.center_idx[0]))
 
 
 class Event(Interval):
@@ -449,6 +465,37 @@ class Events(list):
     
     def get(self, label):
         return Events([e for e in self if label in e.labels])
+
+
+class RunningWin:
+    def __init__(self, n_samples, win_size, win_inc=1):
+        """
+        n_samples, win_size, and win_inc are integers (not enforced, but expected!)
+        Attributes of interest:
+            run_win (array of slice objects)
+            center_idx (indices of center samples)
+        """
+        self.n_samples = int(n_samples)
+        self.win_size = int(win_size)
+        self.win_inc = int(win_inc)
+        self.n_win = int(np.floor((n_samples-win_size)/win_inc) + 1)
+
+        run_win = []
+        center_idx = []
+        for win_count in range(0, self.n_win):
+            win_start = win_count * win_inc
+            win_end = win_start + win_size
+            center_idx.append(win_start + win_size//2)
+            run_win.append(slice(win_start, win_end))
+        
+        self._run_win = run_win
+        self.center_idx = center_idx
+        
+    def __call__(self):
+        return self._run_win
+    
+    def __len__(self):
+        return self.n_win
 
 
 def interpnan(sig):
