@@ -440,9 +440,9 @@ class Data: # Signal processing
         win_inc_samples = round(win_inc*self.sr)
         n_samples = len(self)
         rw = RunningWin(n_samples, win_size_samples, win_inc_samples)
-        ret_sig = np.array([func(self._sig[r_win], axis=self.axis) for r_win in rw()])
+        ret_sig = np.array([func(self._sig[r_win], self.axis) for r_win in rw()])
         ret_sr = self.sr/win_inc_samples
-        return Data(ret_sig, ret_sr, axis=self.axis, t0=self.t(rw.center_idx[0]))
+        return Data(ret_sig, ret_sr, axis=self.axis, t0=self.t[rw.center_idx[0]])
 
 
 class Event(Interval):
