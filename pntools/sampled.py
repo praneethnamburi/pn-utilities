@@ -323,7 +323,8 @@ class Data: # Signal processing
         NOTE: When inheriting from this class, if the parameters of the
         __init__ method change, then make sure to rewrite the _clone method
         """
-        self._sig = sig # assumes sig is uniformly resampled
+        self._sig = np.asarray(sig) # assumes sig is uniformly resampled
+        assert self._sig.ndim == 2
         self.sr = sr
         if axis is None:
             self.axis = np.argmax(np.shape(self._sig))
@@ -336,7 +337,13 @@ class Data: # Signal processing
             self._history = history
         self._t0 = t0
     
-    def __call__(self):
+    def __call__(self, col=None):
+        """Return either a specific column or the entire set 2D signal"""
+        if col is not None:
+            assert isinstance(col, int) and col < len(self)
+            slc = [slice(None)]*self._sig.ndim
+            slc[(self.axis+1)%self._sig.ndim] = col
+            return self._sig[tuple(slc)] # not converting slc to tuple threw a FutureWarning
         return self._sig
 
     def _clone(self, proc_sig, his_append=None):
