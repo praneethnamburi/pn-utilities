@@ -324,7 +324,7 @@ class Data: # Signal processing
         __init__ method change, then make sure to rewrite the _clone method
         """
         self._sig = np.asarray(sig) # assumes sig is uniformly resampled
-        assert self._sig.ndim == 2
+        assert self._sig.ndim in (1, 2)
         self.sr = sr
         if axis is None:
             self.axis = np.argmax(np.shape(self._sig))
