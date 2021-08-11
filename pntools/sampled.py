@@ -475,7 +475,7 @@ class Events(list):
 
 
 class RunningWin:
-    def __init__(self, n_samples, win_size, win_inc=1):
+    def __init__(self, n_samples, win_size, win_inc=1, step=None):
         """
         n_samples, win_size, and win_inc are integers (not enforced, but expected!)
         Attributes of interest:
@@ -493,7 +493,7 @@ class RunningWin:
             win_start = win_count * win_inc
             win_end = win_start + win_size
             center_idx.append(win_start + win_size//2)
-            run_win.append(slice(win_start, win_end))
+            run_win.append(slice(win_start, win_end, step))
         
         self._run_win = run_win
         self.center_idx = center_idx
