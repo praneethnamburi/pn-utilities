@@ -1107,12 +1107,36 @@ def spawn_commands(cmds, nproc=3, verbose=False, retry=False, sleep_time=0.5, wa
     return all_proc
 
 
-## Dictionary
+## extensions to basic classes
 class dotdict(dict):
     """dot.notation access to dictionary attributes"""
     __getattr__ = dict.get
     __setattr__ = dict.__setitem__
     __delattr__ = dict.__delitem__
+
+class namelist:
+    """List of elements where each element has the 'name' field"""
+    def __init__(self, data):
+        self.data = list(data)
+    
+    @property
+    def names(self):
+        return [x.name for x in self.data]
+    
+    def __getitem__(self, key):
+        if key not in self.names:
+            print(self.names)
+            raise KeyError
+        return {d.name : d for d in self.data}[key]
+
+class nameidlist(namelist):
+    """List of elements where each element has 'name' AND 'id' fields."""
+    @property
+    def ids(self):
+        return [x.id for x in self.data]
+
+    def __call__(self, key):
+        return {x.id:x for x in self.data}[key]
 
 
 ## matplotlib-specific stuff
