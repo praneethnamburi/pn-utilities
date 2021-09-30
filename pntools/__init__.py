@@ -1135,7 +1135,10 @@ class nameidlist(namelist):
     def ids(self):
         return [x.id for x in self.data]
 
-    def __call__(self, key):
+    def __call__(self, key=None):
+        if key is None:
+            print(self.ids)
+            return
         return {x.id:x for x in self.data}[key]
 
 
