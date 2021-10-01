@@ -498,8 +498,12 @@ class RunningWin:
         self._run_win = run_win
         self.center_idx = center_idx
         
-    def __call__(self):
-        return self._run_win
+    def __call__(self, data=None):
+        if data is None: # return slice objects
+            return self._run_win
+        # if data is supplied, apply slice objects to the data
+        assert len(data) == self.n_samples
+        return [data[x] for x in self._run_win]
     
     def __len__(self):
         return self.n_win
