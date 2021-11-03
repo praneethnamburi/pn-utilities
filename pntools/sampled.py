@@ -298,6 +298,7 @@ class Interval:
         return _t
 
     def __add__(self, other):
+        """Used to shift an interval, use union to find a union"""
         return Interval(self.start+other, self.end+other, zero=self.zero+other, sr=self.sr, iter_rate=self.iter_rate)
 
     def __sub__(self, other):
@@ -313,6 +314,20 @@ class Interval:
         self.start = self.start - other
         self.end = self.end - other
         self.zero = self.zero - other
+
+    def union(self, other):
+        """ 
+        Merge intervals to make an interval from minimum start time to
+        maximum end time. Other can be an interval, or a tuple of intervals.
+
+        iter_rate, sr, and zero are inherited from the original
+        event. Therefore, e1.union(e2) doesn't have to be the same as
+        e2.union(e1)
+        """
+        assert self.sr == other.sr
+        this_start = (self.start, other.start)[np.argmin((self.start.time, other.start.time))]
+        this_end = (self.end, other.end)[np.argmax((self.end.time, other.end.time))]
+        return Interval(this_start, this_end, zero=self.zero, sr=self.sr, iter_rate=self.iter_rate)
 
 
 class Data: # Signal processing
