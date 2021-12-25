@@ -17,7 +17,8 @@ import time
 from copy import deepcopy
 from timeit import default_timer as timer
 
-import multiprocess
+if os.name == 'nt':
+    import multiprocess
 import numpy as np
 import blinker
 
@@ -1054,20 +1055,20 @@ class ExComm:
         # close connection
         self.conn.close()
 
-
-class Spawn:
-    def __init__(self, func):
-        self.func = func
-    def __call__(self, *args, **kwargs):
-        self._q = multiprocess.Queue()
-        self._proc = multiprocess.Process(target=self.func, args=(self._q, *args), kwargs=kwargs)
-        self._proc.start()
-        return self
-    def __neg__(self):
-        self._q.put('done')
-        self._proc.terminate()
-    def send(self, msg):
-        self._q.put(msg)
+if os.name == 'nt':
+    class Spawn:
+        def __init__(self, func):
+            self.func = func
+        def __call__(self, *args, **kwargs):
+            self._q = multiprocess.Queue()
+            self._proc = multiprocess.Process(target=self.func, args=(self._q, *args), kwargs=kwargs)
+            self._proc.start()
+            return self
+        def __neg__(self):
+            self._q.put('done')
+            self._proc.terminate()
+        def send(self, msg):
+            self._q.put(msg)
 
 
 def spawn_commands(cmds, nproc=3, verbose=False, retry=False, sleep_time=0.5, wait=True):
