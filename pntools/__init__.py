@@ -1126,8 +1126,11 @@ class namelist:
     
     def __getitem__(self, key):
         if key not in self.names:
-            print(self.names)
-            raise KeyError
+            if isinstance(key, int):
+                return self.data[key]
+            else:
+                print(self.names)
+                raise KeyError
         return {d.name : d for d in self.data}[key]
 
 class nameidlist(namelist):
