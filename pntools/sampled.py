@@ -465,7 +465,37 @@ class Data: # Signal processing
         ret_sig = np.array([func(self._sig[r_win], self.axis) for r_win in rw()])
         ret_sr = self.sr/win_inc_samples
         return Data(ret_sig, ret_sr, axis=self.axis, t0=self.t[rw.center_idx[0]])
+    
+    def __le__(self, other): return self._comparison('__le__', other)
+    def __ge__(self, other): return self._comparison('__ge__', other)
+    def __lt__(self, other): return self._comparison('__lt__', other)
+    def __gt__(self, other): return self._comparison('__gt__', other)
+    def __eq__(self, other): return self._comparison('__eq__', other)
+    def __ne__(self, other): return self._comparison('__ne__', other)
 
+    def _comparison(self, dunder, other):
+        cmp_dunder_dict = {'__le__':'<=', '__ge__':'>=', '__lt__':'<', '__gt__':'>', '__eq__':'==', '__ne__':'!='}
+        assert dunder in cmp_dunder_dict
+        assert isinstance(other, (int, float))
+        return self._clone(getattr(self._sig, dunder)(other), (cmp_dunder_dict[dunder], other))
+    
+    def onoff_samples(self):
+        """Onset and offset samples of a thresholded 1D sampled.Data object"""
+        assert self._sig.dtype == bool
+        assert np.sum(np.asarray(np.shape(self._sig)) > 1) == 1 # only works on 1D signals!
+        from copy import copy
+        x = copy(self._sig)
+        x.shape = len(x)
+        x = x.astype(int)
+        onset_samples = np.where(np.diff(self._sig[:, 0].astype(int)) == 1)[0] + 1
+        offset_samples = np.where(np.diff(self._sig[:, 0].astype(int)) == -1)[0] + 1
+        return onset_samples, offset_samples
+    
+    def onoff_times(self):
+        """Onset and offset times of a thresholded 1D sampled.Data object"""
+        onset_samples, offset_samples = self.onoff_samples()
+        return self.t[onset_samples], self.t[offset_samples]
+            
 
 class Event(Interval):
     def __init__(self, start, end, **kwargs):
