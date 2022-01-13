@@ -31,10 +31,14 @@ class PlotBrowser:
         self.n_plots = len(plot_data)
         self.data = plot_data
         if titlefunc is None:
-            self.titlefunc = lambda s: f'Plot number {s._current_idx}'
+            if hasattr(self.data[0], 'name'):
+                self.titlefunc=lambda s: f'{s.data[s._current_idx].name}'
+            else:
+                self.titlefunc = lambda s: f'Plot number {s._current_idx}'
         else:
             self.titlefunc = titlefunc
         plt.show(block=False)
+        self.update_plot()
     
     def __call__(self, event):
         # print(event.__dict__) # for debugging
