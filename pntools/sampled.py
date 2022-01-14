@@ -484,17 +484,15 @@ class Data: # Signal processing
         assert self._sig.dtype == bool
         assert np.sum(np.asarray(np.shape(self._sig)) > 1) == 1 # only works on 1D signals!
         from copy import copy
-        x = copy(self._sig)
-        x.shape = len(x)
-        x = x.astype(int)
-        onset_samples = np.where(np.diff(self._sig[:, 0].astype(int)) == 1)[0] + 1
-        offset_samples = np.where(np.diff(self._sig[:, 0].astype(int)) == -1)[0] + 1
-        return onset_samples, offset_samples
+        x = np.squeeze(self._sig).astype(int)
+        onset_samples = np.where(np.diff(x) == 1)[0] + 1
+        offset_samples = np.where(np.diff(x) == -1)[0] + 1
+        return list(onset_samples), list(offset_samples)
     
     def onoff_times(self):
         """Onset and offset times of a thresholded 1D sampled.Data object"""
         onset_samples, offset_samples = self.onoff_samples()
-        return self.t[onset_samples], self.t[offset_samples]
+        return [self.t[x] for x in onset_samples], [self.t[x] for x in offset_samples]
             
 
 class Event(Interval):
