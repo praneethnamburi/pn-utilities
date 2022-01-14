@@ -441,6 +441,10 @@ class Data: # Signal processing
         n_samples = len(self)
         return np.linspace(self._t0, self._t0 + (n_samples-1)/self.sr, n_samples)
     
+    @property
+    def dur(self):
+        return (len(self)-1)/self.sr
+    
     def __getitem__(self, key): 
         # NOTE: Generalize for multi-dimensional signals!
         assert isinstance(key, Interval)
