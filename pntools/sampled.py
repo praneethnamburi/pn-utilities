@@ -5,6 +5,7 @@ Tools for working with sampled data
 import collections
 import numpy as np
 from scipy.signal import hilbert, firwin, filtfilt, butter
+from scipy.fft import fft, fftfreq
 
 class Time:
     """
@@ -453,6 +454,12 @@ class Data: # Signal processing
         proc_sig = self._sig.take(indices=range(key.start.sample-offset, key.end.sample-offset), axis=self.axis)
         return self.__class__(proc_sig, self.sr, self.axis, his, key.start.time)
 
+    def make_running_win(self, win_size=0.25, win_inc=0.1):
+        win_size_samples = (round(win_size*self.sr)//2)*2 + 1 # ensure odd number of samples
+        win_inc_samples = round(win_inc*self.sr)
+        n_samples = len(self)
+        return RunningWin(n_samples, win_size_samples, win_inc_samples)
+
     def apply_running_win(self, func, win_size=0.25, win_inc=0.1):
         """
         Process the signal using a running window by applying func to each window.
@@ -462,12 +469,9 @@ class Data: # Signal processing
             Extract RMS envelope
             self.apply_running_win(lambda x: np.sqrt(np.mean(x**2)), win_size, win_inc)
         """
-        win_size_samples = (round(win_size*self.sr)//2)*2 + 1 # ensure odd number of samples
-        win_inc_samples = round(win_inc*self.sr)
-        n_samples = len(self)
-        rw = RunningWin(n_samples, win_size_samples, win_inc_samples)
+        rw = self.make_running_win(win_size, win_inc)
         ret_sig = np.array([func(self._sig[r_win], self.axis) for r_win in rw()])
-        ret_sr = self.sr/win_inc_samples
+        ret_sr = self.sr/round(win_inc*self.sr)
         return Data(ret_sig, ret_sr, axis=self.axis, t0=self.t[rw.center_idx[0]])
     
     def __le__(self, other): return self._comparison('__le__', other)
@@ -497,7 +501,14 @@ class Data: # Signal processing
         """Onset and offset times of a thresholded 1D sampled.Data object"""
         onset_samples, offset_samples = self.onoff_samples()
         return [self.t[x] for x in onset_samples], [self.t[x] for x in offset_samples]
-            
+
+    def fft(self):
+        N = len(self)
+        T = 1/self.sr
+        f = fftfreq(N, T)[:N//2]
+        amp = 2.0/N * np.abs(fft(self._sig)[0:N//2])
+        return amp, f
+
 
 class Event(Interval):
     def __init__(self, start, end, **kwargs):
