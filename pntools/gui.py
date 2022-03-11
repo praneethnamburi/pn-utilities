@@ -1,10 +1,21 @@
+"""
+Simple Graphical User Interface elements for browsing data
+
+Classes:
+    DataBrowser - Browse 2D arrays, or an array of sampled.Data elements
+    PlotBrowser - Scroll through an array of complex data where a plotting function is defined for each element
+"""
+
 import matplotlib as mpl
 from matplotlib import pyplot as plt
 
 from pntools import sampled
 
 
-class PlotBrowser:
+class DataBrowser:
+    """
+    Browse 2D arrays, or an array of sampled data elements
+    """
     def __init__(self, plot_data, titlefunc=None) -> None:
         """
         plot_data is a list of 1D arrays or sampled data
@@ -71,3 +82,99 @@ class PlotBrowser:
             self._plot.set_ydata()
         self._ax.set_title(self.titlefunc(self))
         plt.draw()
+
+
+class PlotBrowser:
+    """
+    Takes a list of data, and a plotting function that parses each of the elements in the array.
+    Assumes that the plotting function is going to make one figure.
+    """
+    def __init__(self, plot_data, plot_func, **plot_kwargs):
+        """
+            plot_data - list of data objects to browse
+            plot_func - plotting function that accepts:
+                an element in the plot_data list as its first input
+                figure handle in which to plot as the second input
+                keyword arguments to be passed to the plot_func
+            plot_kwargs - these keyword arguments will be passed to plot_function after data and figure
+        """
+        self.plot_data = plot_data # list where each element serves as input to plot_func
+        self.plot_func = plot_func
+        self.plot_kwargs = plot_kwargs
+
+        # tracking variable
+        self._current_idx = 0
+
+        # setup
+        self._fig = plt.figure()
+
+        # for cleanup
+        self.cid = self._fig.canvas.mpl_connect('key_press_event', self)
+        self.closeid = self._fig.canvas.mpl_connect('close_event', self)
+
+        # initialize
+        self._keypressdict = {}
+        self._bindings_removed = {} 
+        self.add_key_binding('left', self.decrement)
+        self.add_key_binding('right', self.increment)
+        plt.show(block=False)
+        self.update_figure()
+
+    def mpl_remove_bindings(self, key_list):
+        """If the existing key is bound to something in matplotlib, then remove it"""
+        for key in key_list:
+            this_param_name = [k for k, v in mpl.rcParams.items() if isinstance(v, list) and key in v]
+            if this_param_name: # not an empty list
+                assert len(this_param_name) == 1
+                this_param_name = this_param_name[0]
+                mpl.rcParams[this_param_name].remove(key)
+                self._bindings_removed[this_param_name] = key
+    
+    def mpl_restore_bindings(self):
+        """Restore any modified default keybindings in matplotlib"""
+        for param_name, key in self._bindings_removed.items():
+            if key not in mpl.rcParams[param_name]:
+                mpl.rcParams[param_name].append(key) # param names: keymap.back, keymap.forward)
+        self._bindings_removed[param_name] = {}
+
+    def __call__(self, event):
+        # print(event.__dict__) # for debugging
+        if event.name == 'key_press_event' and event.key in self._keypressdict:
+            self._keypressdict[event.key]()
+
+        elif event.name == 'close_event': # perform cleanup
+            self.cleanup()
+    
+    def cleanup(self):
+        """Perform cleanup, for example, when the figure is closed."""
+        self._fig.canvas.mpl_disconnect(self.cid)
+        self._fig.canvas.mpl_disconnect(self.closeid)
+        self.mpl_restore_bindings()
+    
+    def add_key_binding(self, key_name, on_press_function):
+        """
+        This is useful to add key-bindings in classes that inherit from this one, or on the command line.
+        See usage in the __init__ function
+        """
+        self.mpl_remove_bindings([key_name])
+        self._keypressdict[key_name] = on_press_function
+        
+    def get_current_data(self):
+        return self.plot_data[self._current_idx]
+
+    def increment(self):
+        self._current_idx = min(self._current_idx+1, len(self.plot_data)-1)
+        self.update_figure()
+
+    def decrement(self):
+        self._current_idx = max(self._current_idx-1, 0)
+        self.update_figure()
+
+    def save_figure(self):
+        self._fig.savefig()
+
+    def update_figure(self):
+        self._fig.clear()
+        self.plot_func(self.get_current_data(), self._fig, **self.plot_kwargs)
+        plt.draw()
+    
