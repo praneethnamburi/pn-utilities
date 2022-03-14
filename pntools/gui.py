@@ -5,7 +5,8 @@ Classes:
     DataBrowser - Browse 2D arrays, or an array of sampled.Data elements
     PlotBrowser - Scroll through an array of complex data where a plotting function is defined for each element
 """
-
+import io
+from PySide2.QtGui import QClipboard, QImage
 import matplotlib as mpl
 from matplotlib import pyplot as plt
 
@@ -109,14 +110,16 @@ class PlotBrowser:
         self._fig = plt.figure()
 
         # for cleanup
-        self.cid = self._fig.canvas.mpl_connect('key_press_event', self)
-        self.closeid = self._fig.canvas.mpl_connect('close_event', self)
+        self.cid = []
+        self.cid.append(self._fig.canvas.mpl_connect('key_press_event', self))
+        self.cid.append(self._fig.canvas.mpl_connect('close_event', self))
 
         # initialize
         self._keypressdict = {}
         self._bindings_removed = {} 
         self.add_key_binding('left', self.decrement)
         self.add_key_binding('right', self.increment)
+        self.add_key_binding('ctrl+c', self.copy_to_clipboard)
         plt.show(block=False)
         self.update_figure()
 
@@ -147,8 +150,8 @@ class PlotBrowser:
     
     def cleanup(self):
         """Perform cleanup, for example, when the figure is closed."""
-        self._fig.canvas.mpl_disconnect(self.cid)
-        self._fig.canvas.mpl_disconnect(self.closeid)
+        for this_cid in self.cid:
+            self._fig.canvas.mpl_disconnect(this_cid)
         self.mpl_restore_bindings()
     
     def add_key_binding(self, key_name, on_press_function):
@@ -169,6 +172,12 @@ class PlotBrowser:
     def decrement(self):
         self._current_idx = max(self._current_idx-1, 0)
         self.update_figure()
+    
+    def copy_to_clipboard(self):
+        buf = io.BytesIO()
+        self._fig.savefig(buf)
+        QClipboard().setImage(QImage.fromData(buf.getvalue()))
+        buf.close()
 
     def save_figure(self):
         self._fig.savefig()
