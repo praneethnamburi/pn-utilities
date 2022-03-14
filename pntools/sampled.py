@@ -533,9 +533,13 @@ class Events(list):
 
 
 class RunningWin:
-    def __init__(self, n_samples, win_size, win_inc=1, step=None):
+    def __init__(self, n_samples, win_size, win_inc=1, step=None, offset=0):
         """
         n_samples, win_size, and win_inc are integers (not enforced, but expected!)
+        offset (int) offsets all running windows by offset number of samples.
+            This is useful when the object you're slicing has an inherent offset that you need to consider.
+            For example, consider creating running windows on a sliced optitrack marker
+            Think of offset as start_sample
         Attributes of interest:
             run_win (array of slice objects)
             center_idx (indices of center samples)
@@ -544,11 +548,12 @@ class RunningWin:
         self.win_size = int(win_size)
         self.win_inc = int(win_inc)
         self.n_win = int(np.floor((n_samples-win_size)/win_inc) + 1)
+        self.start_index = int(offset)
 
         run_win = []
         center_idx = []
         for win_count in range(0, self.n_win):
-            win_start = win_count * win_inc
+            win_start = (win_count * win_inc) + offset
             win_end = win_start + win_size
             center_idx.append(win_start + win_size//2)
             run_win.append(slice(win_start, win_end, step))
