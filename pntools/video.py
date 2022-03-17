@@ -35,8 +35,14 @@ class View(VideoReader):
     Annotations:
         Text annotation at frames [event markings, observations]
         Drawing shapes
+
+    Note: I could have inherited from PlotBrowser, but re-drawing axes is not a good idea for this application
     """
-    def __init__(self, vid_name):
+    def __init__(self, vid_name, ax=None):
+        """
+        vid_name (str) - full path to the video file
+        ax (matplotlib AxesSubplot) - figure axis to view the video (optional)
+        """
         if not os.path.exists(vid_name):
             # try looking in the CLIP FOLDER
             vid_name = os.path.join(CLIP_FOLDER, os.path.split(vid_name)[-1])
@@ -58,13 +64,33 @@ class View(VideoReader):
                 mpl.rcParams[this_param_name].remove(key)
                 self._bindings_removed[this_param_name] = key
 
-        self._fig, self._ax = plt.subplots()
+        if ax is None:
+            self._fig, self._ax = plt.subplots()
+        else:
+            import matplotlib.axes as maxes
+            assert isinstance(ax, (maxes.Axes, plt.Figure))
+            if isinstance(ax, plt.Figure):
+                self._fig = ax
+                if not self._fig.axes:
+                    self._ax = self._fig.subplots(1, 1)
+                else:
+                    # find an empty axis
+                    for this_ax in self._fig.axes:
+                        # if axis does not have images, lines, or scatter plots
+                        if not any((bool(this_ax.get_images()), bool(this_ax.lines), bool(this_ax.collections))):
+                            break
+                    self._ax = this_ax
+            else:
+                self._ax = ax
+                self._fig = ax.figure
+        
         self.im = self._ax.imshow(self[self._current_frame].asnumpy())
         self.cid = self._fig.canvas.mpl_connect('key_press_event', self)
         self.closeid = self._fig.canvas.mpl_connect('close_event', self)
         self.nframes = len(self)
         self.fps = self.get_avg_fps()
         plt.axis('off')
+        self.title_string = ''
         self.update_image()
         # print(self.__dict__)
         plt.show(block=False)
@@ -105,9 +131,10 @@ class View(VideoReader):
                     mpl.rcParams[param_name].append(key) # param names: keymap.back, keymap.forward)
 
     def update_image(self):
+        # TIP: to use this class without showing the title, create a child class and replace the update_image function
         self.im.set_data(self[self._current_frame].asnumpy())
-        
-        self._ax.set_title('Frame {:d}/{:d}, {:f} fps, '.format(self._current_frame, self.nframes, self.fps) + str(timedelta(seconds=self._current_frame/self.fps)))
+        self.title_string = 'Frame {:d}/{:d}, {:f} fps, '.format(self._current_frame, self.nframes, self.fps) + str(timedelta(seconds=self._current_frame/self.fps))
+        self._ax.set_title(self.title_string)
         plt.draw()
 
     def extract_clip(self, start_frame, end_frame, fname_out=None, out_rate=None):
