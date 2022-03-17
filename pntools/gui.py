@@ -58,6 +58,8 @@ class GenericBrowser:
                 mpl.rcParams[param_name].append(key) # param names: keymap.back, keymap.forward)
             self._bindings_removed[param_name] = {}
 
+    # Event responses - useful to pair with add_key_binding
+    # These capabilities can be assigned to different key bindings
     def add_key_binding(self, key_name, on_press_function):
         """
         This is useful to add key-bindings in classes that inherit from this one, or on the command line.
@@ -66,8 +68,11 @@ class GenericBrowser:
         self.mpl_remove_bindings([key_name])
         self._keypressdict[key_name] = on_press_function
 
-
-class EventResponses:
+    def set_default_keybindings(self):
+        self.add_key_binding('left', self.decrement)
+        self.add_key_binding('right', self.increment)
+        self.add_key_binding('ctrl+c', self.copy_to_clipboard)
+    
     def increment(self):
         self._current_idx = min(self._current_idx+1, len(self.plot_data)-1)
         self.update_figure()
@@ -82,11 +87,8 @@ class EventResponses:
         QClipboard().setImage(QImage.fromData(buf.getvalue()))
         buf.close()
 
-    def save_figure(self):
-        self._fig.savefig()
 
-
-class PlotBrowser(GenericBrowser, EventResponses):
+class PlotBrowser(GenericBrowser):
     """
     Takes a list of data, and a plotting function that parses each of the elements in the array.
     Assumes that the plotting function is going to make one figure.
@@ -111,9 +113,7 @@ class PlotBrowser(GenericBrowser, EventResponses):
         self._current_idx = 0
 
         # initialize
-        self.add_key_binding('left', self.decrement)
-        self.add_key_binding('right', self.increment)
-        self.add_key_binding('ctrl+c', self.copy_to_clipboard)
+        self.set_default_keybindings()
         plt.show(block=False)
         self.update_figure()
         
@@ -126,7 +126,7 @@ class PlotBrowser(GenericBrowser, EventResponses):
         plt.draw()
 
 
-class SignalBrowser(GenericBrowser, EventResponses):
+class SignalBrowser(GenericBrowser):
     """
     Browse an array of pntools.Sampled.Data elements, or 2D arrays
     """
@@ -153,9 +153,7 @@ class SignalBrowser(GenericBrowser, EventResponses):
             self.titlefunc = titlefunc
 
         # initialize
-        self.add_key_binding('left', self.decrement)
-        self.add_key_binding('right', self.increment)
-        self.add_key_binding('ctrl+c', self.copy_to_clipboard)
+        self.set_default_keybindings()
         plt.show(block=False)
         self.update_figure()
 
