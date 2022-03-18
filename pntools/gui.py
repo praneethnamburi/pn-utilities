@@ -2,8 +2,14 @@
 Simple Graphical User Interface elements for browsing data
 
 Classes:
-    DataBrowser - Browse 2D arrays, or an array of sampled.Data elements
+    GenericBrowser - Generic class to browse data. Meant to be extended.
+    SignalBrowser - Browse an array of pntools.Sampled.Data elements, or 2D arrays
     PlotBrowser - Scroll through an array of complex data where a plotting function is defined for each element
+    VideoBrowser - Scroll through images of a video
+
+    Future:
+        Extend VideoBrowser to play, pause and extract clips using hotkeys. Show timeline in VideoBrowser.
+        Add clickable navigation.
 """
 import io
 import os
@@ -13,9 +19,12 @@ import ffmpeg
 import matplotlib as mpl
 from PySide2.QtGui import QClipboard, QImage
 from matplotlib import pyplot as plt
+from matplotlib import axes as maxes
 from decord import VideoReader
 
 from pntools import sampled
+
+CLIP_FOLDER = 'C:\\data\\_clipcollection'
 
 
 class GenericBrowser:
@@ -37,19 +46,23 @@ class GenericBrowser:
             figure_handle = plt.figure()
         assert isinstance(figure_handle, plt.Figure)
         self._fig = figure_handle
-        self._keypressdict = {}
+        self._keypressdict = {} # managed by add_key_binding
         self._bindings_removed = {}
         
         # tracking variable
         self._current_idx = 0
+
+        # tracking variable memory slots
+        self._idx_memory_slots = {str(k):None for k in range(1, 10)}
+        self._memtext = TextView(self._idx_memory_slots, fax=self._fig)
 
         # for cleanup
         self.cid = []
         self.cid.append(self._fig.canvas.mpl_connect('key_press_event', self))
         self.cid.append(self._fig.canvas.mpl_connect('close_event', self))
     
-    def update(self):
-        pass # inherited classes are expected to implement an update function!
+    def update(self): # extended classes are expected to implement their update function!
+        self._memtext.update(self._idx_memory_slots)
 
     def mpl_remove_bindings(self, key_list):
         """If the existing key is bound to something in matplotlib, then remove it"""
@@ -63,9 +76,11 @@ class GenericBrowser:
     
     def __call__(self, event):
         # print(event.__dict__) # for debugging
-        if event.name == 'key_press_event' and event.key in self._keypressdict:
-            self._keypressdict[event.key]()
-
+        if event.name == 'key_press_event':
+            if event.key in self._keypressdict:
+                self._keypressdict[event.key]() # this may or may not redraw everything
+            if event.key in self._idx_memory_slots:
+                self.memory_slot_update(event.key)
         elif event.name == 'close_event': # perform cleanup
             self.cleanup()
     
@@ -85,6 +100,19 @@ class GenericBrowser:
     def __len__(self):
         if hasattr(self, 'data'): # otherwise returns None
             return len(self.data)
+    
+    def memory_slot_update(self, key):
+        """
+        memory slot handling - Initiate when None, Go to the slot if it exists, frees slot if pressed when it exists
+        key is the event.key triggered by a callback
+        """
+        if self._idx_memory_slots[key] is None:
+            self._idx_memory_slots[key] = self._current_idx
+        elif self._idx_memory_slots[key] == self._current_idx:
+            self._idx_memory_slots[key] = None
+        else:
+            self._current_idx = self._idx_memory_slots[key]
+        self.update()
 
     # Event responses - useful to pair with add_key_binding
     # These capabilities can be assigned to different key bindings
@@ -101,8 +129,8 @@ class GenericBrowser:
         self.add_key_binding('right', self.increment)
         self.add_key_binding('up', (lambda s: s.increment(step=10)).__get__(self))
         self.add_key_binding('down', (lambda s: s.decrement(step=10)).__get__(self))
-        self.add_key_binding('shift+left', self.increment_frac)
-        self.add_key_binding('shift+right', self.decrement_frac)
+        self.add_key_binding('shift+left', self.decrement_frac)
+        self.add_key_binding('shift+right', self.increment_frac)
         self.add_key_binding('shift+up', self.go_to_start)
         self.add_key_binding('shift+down', self.go_to_end)
         self.add_key_binding('ctrl+c', self.copy_to_clipboard)
@@ -211,16 +239,17 @@ class SignalBrowser(GenericBrowser):
         self._ax.set_title(self.titlefunc(self))
         plt.draw()
 
-CLIP_FOLDER = 'C:\\data\\_clipcollection'
 
 class VideoBrowser(GenericBrowser):
+    """Scroll through images of a video"""
     def __init__(self, vid_name, titlefunc=None, figure_handle=None):
         super().__init__(figure_handle)
 
         if not os.path.exists(vid_name): # try looking in the CLIP FOLDER
-            vid_name = os.path.join(CLIP_FOLDER, os.path.split(vid_name)[-1])
-        
+            vid_name = os.path.join(CLIP_FOLDER, os.path.split(vid_name)[-1])        
         assert os.path.exists(vid_name)
+        self.fname = vid_name
+        self.name = os.path.splitext(os.path.split(vid_name)[1])[0]
         with open(vid_name, 'rb') as f:
             self.data = VideoReader(f)
         
@@ -234,21 +263,72 @@ class VideoBrowser(GenericBrowser):
             self.titlefunc = lambda s: f'Frame {s._current_idx}/{len(s)}, {s.fps} fps, {str(timedelta(seconds=s._current_idx/s.fps))}'
         
         self.set_default_keybindings()
+        self.add_key_binding('e', self.extract_clip)
         plt.show(block=False)
         self.update()
 
     def update(self):
         self._im.set_data(self.data[self._current_idx].asnumpy())
         self._ax.set_title(self.titlefunc(self))
+        super().update() # updates memory slots
         plt.draw()
 
-    def extract_clip(self, start_frame, end_frame, fname_out=None, out_rate=None):
+    def extract_clip(self, start_frame=None, end_frame=None, fname_out=None, out_rate=None):
+        if start_frame is None:
+            start_frame = self._idx_memory_slots['1']
+        if end_frame is None:
+            end_frame = self._idx_memory_slots['2']
+        assert end_frame > start_frame
         start_time = float(start_frame)/self.fps
         end_time = float(end_frame)/self.fps
         dur = end_time - start_time
         if out_rate is None:
             out_rate = self.fps
         if fname_out is None:
-            fname_out = os.path.join(CLIP_FOLDER, os.path.splitext(self.vid_name)[0] + '_s{:.3f}_e{:.3f}.mp4'.format(start_time, end_time))
-        ffmpeg.input(self.vid_name, ss=start_time).output(fname_out, vcodec='h264_nvenc', t=dur, r=out_rate).run()
+            fname_out = os.path.join(CLIP_FOLDER, os.path.splitext(self.name)[0] + '_s{:.3f}_e{:.3f}.mp4'.format(start_time, end_time))
+        ffmpeg.input(self.fname, ss=start_time).output(fname_out, vcodec='h264_nvenc', t=dur, r=out_rate).run()
         return fname_out
+
+
+class TextView:
+    """Show text array line by line"""
+    def __init__(self, text, fax=None):
+        """
+        text is an array of strings
+        fax is either a figure or an axis handle
+        """
+        self.text = self.parse_text(text)
+        self._text = None # matplotlib text object
+        self._fig, self._ax = self.parse_fax(fax)
+        self.setup()
+        self.update()
+    
+    def parse_text(self, text):
+        if isinstance(text, dict):
+            text = [f'{key} - {val}' for key, val in text.items()] 
+        return text
+
+    def parse_fax(self, fax):
+        assert isinstance(fax, (type(None), plt.Figure, maxes.Axes))
+        if fax is None:
+            f = plt.figure()
+            ax = f.add_axes((0.01, 0.01, 0.99, 0.99))
+        elif isinstance(fax, plt.Figure):
+            f = fax
+            ax = f.add_axes((0.01, 0.01, 0.99, 0.99))
+        else:
+            f = fax.figure
+            ax = fax
+        return f, ax
+
+    def setup(self):
+        self._ax.axis('off')
+        plt.show(block=False)
+
+    def update(self, new_text=None):
+        if new_text is not None:
+            self.text = self.parse_text(new_text)
+        if self._text is not None:
+            self._text.remove()
+        self._text = self._ax.text(0, 0.02, '\n'.join(self.text), ha='left', va='bottom')
+        plt.draw()
