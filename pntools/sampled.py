@@ -603,9 +603,13 @@ def onoff_samples(tfsig):
     assert tfsig.dtype == bool
     assert np.sum(np.asarray(np.shape(tfsig)) > 1) == 1
     x = np.squeeze(tfsig).astype(int)
-    onset_samples = np.where(np.diff(x) == 1)[0] + 1
-    offset_samples = np.where(np.diff(x) == -1)[0] + 1
-    return list(onset_samples), list(offset_samples)
+    onset_samples = list(np.where(np.diff(x) == 1)[0] + 1)
+    offset_samples = list(np.where(np.diff(x) == -1)[0] + 1)
+    if tfsig[0]: # is True
+        onset_samples = [0] + onset_samples
+    if tfsig[-1]:
+        offset_samples = offset_samples + [len(tfsig)]
+    return onset_samples, offset_samples
 
 def uniform_resample(time, sig, sr, t_min=None, t_max=None):
     """
