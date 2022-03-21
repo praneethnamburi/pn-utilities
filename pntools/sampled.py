@@ -497,6 +497,25 @@ class Data: # Signal processing
         f = fftfreq(N, T)[:N//2]
         amp = 2.0/N * np.abs(fft(self._sig)[0:N//2])
         return amp, f
+    
+    def diff(self):
+        if self._sig.ndim == 2:
+            if self.axis == 1:
+                pp_value = (self._sig[:, 1] - self._sig[:, 0])[:, None]
+                fn = np.hstack
+            else: # self.axis == 0
+                pp_value = self._sig[1] - self._sig[0]
+                fn = np.vstack
+        else: # self._sig.ndim == 1
+            pp_value = self._sig[1] - self._sig[0]
+            fn = np.hstack
+
+        # returning a marker type even though this is technically not true
+        return self._clone(fn( (pp_value, np.diff(self._sig, axis=self.axis)*self.sr) ), ('diff', None))
+    
+    def magnitude(self):
+        assert self._sig.ndim == 2 # magnitude does not make sense for a 1D signal (in that case, use np.linalg.norm directly)
+        return Data(np.linalg.norm(self._sig, axis=(self.axis+1)%2), self.sr, history=self._history+[('magnitude', 'None')])
 
 
 class Event(Interval):
@@ -574,6 +593,9 @@ def interpnan(sig, maxgap=None, **kwargs):
             commonly used: kind='cubic'
     """
     assert np.ndim(sig) == 1
+    if 'fill_value' not in kwargs:
+        kwargs['fill_value'] = 'extrapolate'
+        
     def nan_helper(y):
         return np.isnan(y), lambda z: z.nonzero()[0]
     proc_sig = sig.copy()
