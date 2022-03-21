@@ -342,7 +342,8 @@ class Data: # Signal processing
         """
         self._sig = np.asarray(sig) # assumes sig is uniformly resampled
         assert self._sig.ndim in (1, 2)
-        self.sr = sr
+        if not hasattr(self, 'sr'): # in case of multiple inheritance - see ot.Marker
+            self.sr = sr
         if axis is None:
             self.axis = np.argmax(np.shape(self._sig))
         else:
@@ -597,6 +598,7 @@ def onoff_samples(tfsig):
     """
     Find onset and offset samples of a 1D boolean signal (e.g. Thresholded TTL pulse)
     Currently works only on 1D signals!
+    tfsig is shorthand for true/false signal
     """
     assert tfsig.dtype == bool
     assert np.sum(np.asarray(np.shape(tfsig)) > 1) == 1
