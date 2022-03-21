@@ -6,6 +6,7 @@ import collections
 import numpy as np
 from scipy.signal import hilbert, firwin, filtfilt, butter
 from scipy.fft import fft, fftfreq
+from scipy.interpolate import interp1d
 
 class Time:
     """
@@ -559,7 +560,7 @@ class RunningWin:
         return self.n_win
 
 
-def interpnan(sig, maxgap=None):
+def interpnan(sig, maxgap=None, **kwargs):
     """
     Interpolate NaNs in a 1D signal
         sig - 1D numpy array
@@ -567,11 +568,14 @@ def interpnan(sig, maxgap=None):
             - (NoneType) all NaN values will be interpolated
             - (int) stretches of NaN values smaller than or equal to maxgap will be interpolated
             - (boolean array) will be used as a mask where interpolation will only happen where maxgap is True
+        kwargs - 
+            these get passed to scipy.interpolate.interp1d function
+            commonly used: kind='cubic'
     """
     assert np.ndim(sig) == 1
     def nan_helper(y):
         return np.isnan(y), lambda z: z.nonzero()[0]
-    proc_sig = sig
+    proc_sig = sig.copy()
     nans, x = nan_helper(proc_sig)
     if maxgap is None:
         mask = np.ones_like(nans)
@@ -586,7 +590,7 @@ def interpnan(sig, maxgap=None):
     else:
         mask = maxgap
     assert len(mask) == len(sig)
-    proc_sig[nans & mask]= np.interp(x(nans & mask), x(~nans), proc_sig[~nans])
+    proc_sig[nans & mask]= interp1d(x(~nans), proc_sig[~nans], **kwargs)(x(nans & mask)) # np.interp(x(nans & mask), x(~nans), proc_sig[~nans])
     return proc_sig
 
 def onoff_samples(tfsig):
