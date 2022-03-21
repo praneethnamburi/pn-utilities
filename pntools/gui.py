@@ -54,7 +54,8 @@ class GenericBrowser:
 
         # tracking variable memory slots
         self._idx_memory_slots = {str(k):None for k in range(1, 10)}
-        self._memtext = TextView(self._idx_memory_slots, fax=self._fig)
+        self._memtext = None
+        self._keybindingtext = None
 
         # for cleanup
         self.cid = []
@@ -62,7 +63,8 @@ class GenericBrowser:
         self.cid.append(self._fig.canvas.mpl_connect('close_event', self))
     
     def update(self): # extended classes are expected to implement their update function!
-        self._memtext.update(self._idx_memory_slots)
+        if self._memtext is not None:
+            self._memtext.update(self._idx_memory_slots)
 
     def mpl_remove_bindings(self, key_list):
         """If the existing key is bound to something in matplotlib, then remove it"""
@@ -78,7 +80,7 @@ class GenericBrowser:
         # print(event.__dict__) # for debugging
         if event.name == 'key_press_event':
             if event.key in self._keypressdict:
-                self._keypressdict[event.key]() # this may or may not redraw everything
+                self._keypressdict[event.key][0]() # this may or may not redraw everything
             if event.key in self._idx_memory_slots:
                 self.memory_slot_update(event.key)
         elif event.name == 'close_event': # perform cleanup
@@ -116,24 +118,27 @@ class GenericBrowser:
 
     # Event responses - useful to pair with add_key_binding
     # These capabilities can be assigned to different key bindings
-    def add_key_binding(self, key_name, on_press_function):
+    def add_key_binding(self, key_name, on_press_function, description=None):
         """
         This is useful to add key-bindings in classes that inherit from this one, or on the command line.
         See usage in the __init__ function
         """
+        if description is None:
+            description = on_press_function.__name__
         self.mpl_remove_bindings([key_name])
-        self._keypressdict[key_name] = on_press_function
+        self._keypressdict[key_name] = (on_press_function, description)
 
     def set_default_keybindings(self):
         self.add_key_binding('left', self.decrement)
         self.add_key_binding('right', self.increment)
-        self.add_key_binding('up', (lambda s: s.increment(step=10)).__get__(self))
-        self.add_key_binding('down', (lambda s: s.decrement(step=10)).__get__(self))
-        self.add_key_binding('shift+left', self.decrement_frac)
-        self.add_key_binding('shift+right', self.increment_frac)
+        self.add_key_binding('up', (lambda s: s.increment(step=10)).__get__(self), description='increment by 10')
+        self.add_key_binding('down', (lambda s: s.decrement(step=10)).__get__(self), description='decrement by 10')
+        self.add_key_binding('shift+left', self.decrement_frac, description='step forward by 1/20 of the timeline')
+        self.add_key_binding('shift+right', self.increment_frac, description='step backward by 1/20 of the timeline')
         self.add_key_binding('shift+up', self.go_to_start)
         self.add_key_binding('shift+down', self.go_to_end)
         self.add_key_binding('ctrl+c', self.copy_to_clipboard)
+        self.add_key_binding('ctrl+k', (lambda s: s.show_key_bindings(f='new', pos='center left')).__get__(self), description='show key bindings')
     
     def increment(self, step=1):
         self._current_idx = min(self._current_idx+step, len(self)-1)
@@ -165,6 +170,16 @@ class GenericBrowser:
         self._fig.savefig(buf)
         QClipboard().setImage(QImage.fromData(buf.getvalue()))
         buf.close()
+    
+    def show_memory_slots(self, pos='bottom left'):
+        self._memtext = TextView(self._idx_memory_slots, fax=self._fig, pos=pos)
+
+    def show_key_bindings(self, f=None, pos='bottom right'):
+        f = {None: self._fig, 'new': plt.figure()}[f]
+        text = []
+        for shortcut, (_, description) in self._keypressdict.items():
+            text.append(f'{shortcut:<12} - {description}')
+        self._keybindingtext = TextView(text, f, pos=pos)
 
 
 class PlotBrowser(GenericBrowser):
@@ -198,6 +213,7 @@ class PlotBrowser(GenericBrowser):
 
     def update(self):
         self._fig.clear()
+        self.show_memory_slots()
         self.plot_func(self.get_current_data(), self._fig, **self.plot_kwargs)
         plt.draw()
 
@@ -264,6 +280,7 @@ class VideoBrowser(GenericBrowser):
         
         self.set_default_keybindings()
         self.add_key_binding('e', self.extract_clip)
+        self.show_memory_slots()
         plt.show(block=False)
         self.update()
 
@@ -274,6 +291,7 @@ class VideoBrowser(GenericBrowser):
         plt.draw()
 
     def extract_clip(self, start_frame=None, end_frame=None, fname_out=None, out_rate=None):
+        #TODO: For musicrunning, grab the corresponding audio and add the audio track to the video clip?
         if start_frame is None:
             start_frame = self._idx_memory_slots['1']
         if end_frame is None:
@@ -292,7 +310,7 @@ class VideoBrowser(GenericBrowser):
 
 class TextView:
     """Show text array line by line"""
-    def __init__(self, text, fax=None):
+    def __init__(self, text, fax=None, pos='bottom left'):
         """
         text is an array of strings
         fax is either a figure or an axis handle
@@ -300,6 +318,7 @@ class TextView:
         self.text = self.parse_text(text)
         self._text = None # matplotlib text object
         self._fig, self._ax = self.parse_fax(fax)
+        self._pos = self.parse_pos(pos)
         self.setup()
         self.update()
     
@@ -312,14 +331,25 @@ class TextView:
         assert isinstance(fax, (type(None), plt.Figure, maxes.Axes))
         if fax is None:
             f = plt.figure()
-            ax = f.add_axes((0.01, 0.01, 0.99, 0.99))
+            ax = f.add_axes((0.01, 0.01, 0.98, 0.98))
         elif isinstance(fax, plt.Figure):
             f = fax
-            ax = f.add_axes((0.01, 0.01, 0.99, 0.99))
+            ax = f.add_axes((0.01, 0.01, 0.98, 0.98))
         else:
             f = fax.figure
             ax = fax
         return f, ax
+    
+    def parse_pos(self, pos):
+        if isinstance(pos, str):
+            updown, leftright = pos.replace('middle', 'center').split(' ')
+            assert updown in ('top', 'center', 'bottom')
+            assert leftright in ('left', 'center', 'right')
+            y = {'top': 1, 'center': 0.5, 'bottom': 0}[updown]
+            x = {'left': 0, 'center': 0.5, 'right': 1}[leftright]
+            pos = (x, y, updown, leftright)
+        assert len(pos) == 4
+        return pos
 
     def setup(self):
         self._ax.axis('off')
@@ -330,5 +360,6 @@ class TextView:
             self.text = self.parse_text(new_text)
         if self._text is not None:
             self._text.remove()
-        self._text = self._ax.text(0, 0.02, '\n'.join(self.text), ha='left', va='bottom')
+        x, y, va, ha = self._pos
+        self._text = self._ax.text(x, y, '\n'.join(self.text), va=va, ha=ha, family='monospace')
         plt.draw()
