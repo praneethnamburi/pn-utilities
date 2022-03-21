@@ -418,13 +418,10 @@ class Data: # Signal processing
     def highpass(self, cutoff, order=None):
         return self._butterfilt(cutoff, order, 'high')
     
-    def interpnan(self):
+    def interpnan(self, maxgap=None):
+        """Only interpolate values within the mask"""
         # TODO: Generalize this to 2d data!! Use the module interpnan method
-        def nan_helper(y):
-            return np.isnan(y), lambda z: z.nonzero()[0]
-        proc_sig = self._sig
-        nans, x= nan_helper(proc_sig)
-        proc_sig[nans]= np.interp(x(nans), x(~nans), proc_sig[~nans])
+        proc_sig = interpnan(self._sig, maxgap)
         return self._clone(proc_sig, ('instantaneous_phase', None))
 
     def shift_baseline(self, offset): 
@@ -487,19 +484,9 @@ class Data: # Signal processing
         assert isinstance(other, (int, float))
         return self._clone(getattr(self._sig, dunder)(other), (cmp_dunder_dict[dunder], other))
     
-    def onoff_samples(self):
-        """Onset and offset samples of a thresholded 1D sampled.Data object"""
-        assert self._sig.dtype == bool
-        assert np.sum(np.asarray(np.shape(self._sig)) > 1) == 1 # only works on 1D signals!
-        from copy import copy
-        x = np.squeeze(self._sig).astype(int)
-        onset_samples = np.where(np.diff(x) == 1)[0] + 1
-        offset_samples = np.where(np.diff(x) == -1)[0] + 1
-        return list(onset_samples), list(offset_samples)
-    
     def onoff_times(self):
         """Onset and offset times of a thresholded 1D sampled.Data object"""
-        onset_samples, offset_samples = self.onoff_samples()
+        onset_samples, offset_samples = onoff_samples(self._sig)
         return [self.t[x] for x in onset_samples], [self.t[x] for x in offset_samples]
 
     def fft(self):
@@ -572,15 +559,47 @@ class RunningWin:
         return self.n_win
 
 
-def interpnan(sig):
-    # sig is a 1d NumPy array
+def interpnan(sig, maxgap=None):
+    """
+    Interpolate NaNs in a 1D signal
+        sig - 1D numpy array
+        maxgap - 
+            - (NoneType) all NaN values will be interpolated
+            - (int) stretches of NaN values smaller than or equal to maxgap will be interpolated
+            - (boolean array) will be used as a mask where interpolation will only happen where maxgap is True
+    """
     assert np.ndim(sig) == 1
     def nan_helper(y):
         return np.isnan(y), lambda z: z.nonzero()[0]
     proc_sig = sig
     nans, x = nan_helper(proc_sig)
-    proc_sig[nans]= np.interp(x(nans), x(~nans), proc_sig[~nans])
+    if maxgap is None:
+        mask = np.ones_like(nans)
+    elif isinstance(maxgap, int):
+        nans = np.isnan(sig)
+        mask = np.zeros_like(nans)
+        onset_samples, offset_samples = onoff_samples(nans)
+        for on_s, off_s in zip(onset_samples, offset_samples):
+            assert on_s < off_s
+            if off_s - on_s <= maxgap: # interpolate this
+                mask[on_s:off_s] = True
+    else:
+        mask = maxgap
+    assert len(mask) == len(sig)
+    proc_sig[nans & mask]= np.interp(x(nans & mask), x(~nans), proc_sig[~nans])
     return proc_sig
+
+def onoff_samples(tfsig):
+    """
+    Find onset and offset samples of a 1D boolean signal (e.g. Thresholded TTL pulse)
+    Currently works only on 1D signals!
+    """
+    assert tfsig.dtype == bool
+    assert np.sum(np.asarray(np.shape(tfsig)) > 1) == 1
+    x = np.squeeze(tfsig).astype(int)
+    onset_samples = np.where(np.diff(x) == 1)[0] + 1
+    offset_samples = np.where(np.diff(x) == -1)[0] + 1
+    return list(onset_samples), list(offset_samples)
 
 def uniform_resample(time, sig, sr, t_min=None, t_max=None):
     """
