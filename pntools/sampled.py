@@ -419,11 +419,30 @@ class Data: # Signal processing
     
     def highpass(self, cutoff, order=None):
         return self._butterfilt(cutoff, order, 'high')
+
+    def medfilt(self, order=11):
+        """
+        Median filter the signal
+        
+        order is the number of samples in the kernel if it is an int, and treated as time if it is a float
+        """
+        sw = np.lib.stride_tricks.sliding_window_view # this should be much faster than using running window
+        if isinstance(order, float):
+            order = int(order*self.sr)
+        assert isinstance(order, int)
+        order = (order // 2)*2 + 1 # ensure order is odd for simpler handling of time
+        proc_sig_middle = np.median(sw(self._sig, order, axis=self.axis), axis=-1)
+        pre_fill = np.take(self._sig, np.r_[:order//2], axis=self.axis)
+        post_fill = np.take(self._sig, np.r_[-order//2+1:0], axis=self.axis)
+        proc_sig = np.concatenate((pre_fill, proc_sig_middle, post_fill)) # ends of the signal will not be filtered
+        return self._clone(proc_sig, ('median_filter', {'order': order, 'kernel_size_s': order/self.sr}))
     
-    def interpnan(self, maxgap=None):
-        """Only interpolate values within the mask"""
-        # TODO: Generalize this to 2d data!! Use the module interpnan method
-        proc_sig = interpnan(self._sig, maxgap)
+    def interpnan(self, maxgap=None, **kwargs):
+        """
+        Only interpolate values within the mask
+        kwargs will be passed to scipy.interpolate.interp1d
+        """
+        proc_sig = np.apply_along_axis(interpnan, self.axis, self._sig, maxgap, **kwargs)
         return self._clone(proc_sig, ('instantaneous_phase', None))
 
     def shift_baseline(self, offset): 
@@ -517,6 +536,15 @@ class Data: # Signal processing
         assert self._sig.ndim == 2 # magnitude does not make sense for a 1D signal (in that case, use np.linalg.norm directly)
         return Data(np.linalg.norm(self._sig, axis=(self.axis+1)%2), self.sr, history=self._history+[('magnitude', 'None')])
 
+    def apply(self, func, *args, **kwargs):
+        try:
+            kwargs['axis'] = self.axis
+            proc_sig = func(self._sig, *args, **kwargs)
+        except TypeError:
+            kwargs.pop('axis')
+            proc_sig = func(self._sig, *args, **kwargs)
+        return self._clone(proc_sig, ('apply', {'func': func, 'args': args, 'kwargs': kwargs}))
+        
 
 class Event(Interval):
     def __init__(self, start, end, **kwargs):
