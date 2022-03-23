@@ -63,8 +63,11 @@ class GenericBrowser:
         self.cid.append(self._fig.canvas.mpl_connect('close_event', self))
     
     def update(self): # extended classes are expected to implement their update function!
-        if self._memtext is not None:
-            self._memtext.update(self._idx_memory_slots)
+        self.update_memory_slot_display()
+    
+    def update_without_clear(self):
+        self.update_memory_slot_display()
+        # I did this for browsers that clear the axis each time! Those classes will need to re-implement this method
 
     def mpl_remove_bindings(self, key_list):
         """If the existing key is bound to something in matplotlib, then remove it"""
@@ -110,11 +113,13 @@ class GenericBrowser:
         """
         if self._idx_memory_slots[key] is None:
             self._idx_memory_slots[key] = self._current_idx
+            self.update_memory_slot_display()
         elif self._idx_memory_slots[key] == self._current_idx:
             self._idx_memory_slots[key] = None
+            self.update_memory_slot_display()
         else:
             self._current_idx = self._idx_memory_slots[key]
-        self.update()
+            self.update()
 
     # Event responses - useful to pair with add_key_binding
     # These capabilities can be assigned to different key bindings
@@ -139,6 +144,10 @@ class GenericBrowser:
         self.add_key_binding('shift+down', self.go_to_end)
         self.add_key_binding('ctrl+c', self.copy_to_clipboard)
         self.add_key_binding('ctrl+k', (lambda s: s.show_key_bindings(f='new', pos='center left')).__get__(self), description='show key bindings')
+        self.add_key_binding('/', (lambda s: s.pan(direction='right')).__get__(self), description='pan right')
+        self.add_key_binding(',', (lambda s: s.pan(direction='left')).__get__(self), description='pan left')
+        self.add_key_binding('l', (lambda s: s.pan(direction='up')).__get__(self), description='pan up')
+        self.add_key_binding('.', (lambda s: s.pan(direction='down')).__get__(self), description='pan down')
     
     def increment(self, step=1):
         self._current_idx = min(self._current_idx+step, len(self)-1)
@@ -173,6 +182,17 @@ class GenericBrowser:
     
     def show_memory_slots(self, pos='bottom left'):
         self._memtext = TextView(self._idx_memory_slots, fax=self._fig, pos=pos)
+    
+    def update_memory_slot_display(self):
+        """Refresh memory slot text if it is not hidden"""
+        if self._memtext is not None:
+            self._memtext.update(self._idx_memory_slots)
+
+    def hide_memory_slots(self):
+        """Hide the memory slot text"""
+        if self._memtext is not None:
+            self._memtext._text.remove()
+        self._memtext = None
 
     def show_key_bindings(self, f=None, pos='bottom right'):
         f = {None: self._fig, 'new': plt.figure()}[f]
@@ -180,6 +200,46 @@ class GenericBrowser:
         for shortcut, (_, description) in self._keypressdict.items():
             text.append(f'{shortcut:<12} - {description}')
         self._keybindingtext = TextView(text, f, pos=pos)
+    
+    @staticmethod
+    def _filter_sibling_axes(ax, share='x', get_bool=False):
+        """Given a list of matplotlib axes, it will return axes to manipulate by picking one from a set of siblings"""
+        assert share in ('x', 'y')
+        if isinstance(ax, maxes.Axes): # only one axis
+            return [ax]
+        ax = [tax for tax in ax if isinstance(tax, maxes.SubplotBase)]
+        if not ax: # no subplots in figure
+            return
+        pan_ax = [True]*len(ax)
+        get_siblings = {'x': ax[0].get_shared_x_axes, 'y': ax[0].get_shared_y_axes}[share]().get_siblings
+        for i, ax_row in enumerate(ax):
+            sib = get_siblings(ax_row)
+            for j, ax_col in enumerate(ax[i+1:]):
+                if ax_col in sib:
+                    pan_ax[j+i+1] = False
+
+        if get_bool:
+            return pan_ax
+        return [this_ax for this_ax, this_tf in zip(ax, pan_ax) if this_tf]
+        
+    def pan(self, direction='left', frac=0.2):
+        assert direction in ('left', 'right', 'up', 'down')
+        if direction in ('left', 'right'):
+            pan_ax='x'
+        else:
+            pan_ax='y'
+        ax = self._filter_sibling_axes(self._fig.axes, share=pan_ax, get_bool=False)
+        if ax is None:
+            return
+        for this_ax in ax:
+            lim1, lim2 = {'x': this_ax.get_xlim, 'y': this_ax.get_ylim}[pan_ax]()
+            inc = (lim2-lim1)*frac
+            if direction in ('up', 'right'):
+                new_lim = (lim1+inc, lim2+inc)
+            else:
+                new_lim = (lim1-inc, lim2-inc)
+            {'x': this_ax.set_xlim, 'y': this_ax.set_ylim}[pan_ax](new_lim)
+        self.update_without_clear() # panning is pointless if update clears the axis!!
 
 
 class PlotBrowser(GenericBrowser):
@@ -215,6 +275,10 @@ class PlotBrowser(GenericBrowser):
         self._fig.clear()
         self.show_memory_slots()
         self.plot_func(self.get_current_data(), self._fig, **self.plot_kwargs)
+        plt.draw()
+    
+    def udpate_without_clear(self):
+        self.update_memory_slot_display()
         plt.draw()
 
 
@@ -331,10 +395,10 @@ class TextView:
         assert isinstance(fax, (type(None), plt.Figure, maxes.Axes))
         if fax is None:
             f = plt.figure()
-            ax = f.add_axes((0.01, 0.01, 0.98, 0.98))
+            ax = f.add_axes((0.01, 0.01, 0.02, 0.98))
         elif isinstance(fax, plt.Figure):
             f = fax
-            ax = f.add_axes((0.01, 0.01, 0.98, 0.98))
+            ax = f.add_axes((0.01, 0.01, 0.02, 0.98))
         else:
             f = fax.figure
             ax = fax
