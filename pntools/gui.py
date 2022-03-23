@@ -121,6 +121,14 @@ class GenericBrowser:
             self._current_idx = self._idx_memory_slots[key]
             self.update()
 
+    def reset_axes(self):
+        """Reframe data within matplotlib axes."""
+        for ax in self._fig.axes:
+            if isinstance(ax, maxes.SubplotBase):
+                ax.relim()
+                ax.autoscale()
+        plt.draw()
+    
     # Event responses - useful to pair with add_key_binding
     # These capabilities can be assigned to different key bindings
     def add_key_binding(self, key_name, on_press_function, description=None):
@@ -148,6 +156,7 @@ class GenericBrowser:
         self.add_key_binding(',', (lambda s: s.pan(direction='left')).__get__(self), description='pan left')
         self.add_key_binding('l', (lambda s: s.pan(direction='up')).__get__(self), description='pan up')
         self.add_key_binding('.', (lambda s: s.pan(direction='down')).__get__(self), description='pan down')
+        self.add_key_binding('r', self.reset_axes)
     
     def increment(self, step=1):
         self._current_idx = min(self._current_idx+step, len(self)-1)
@@ -234,7 +243,7 @@ class GenericBrowser:
         for this_ax in ax:
             lim1, lim2 = {'x': this_ax.get_xlim, 'y': this_ax.get_ylim}[pan_ax]()
             inc = (lim2-lim1)*frac
-            if direction in ('up', 'right'):
+            if direction in ('down', 'right'):
                 new_lim = (lim1+inc, lim2+inc)
             else:
                 new_lim = (lim1-inc, lim2-inc)
@@ -244,37 +253,71 @@ class GenericBrowser:
 
 class PlotBrowser(GenericBrowser):
     """
-    Takes a list of data, and a plotting function that parses each of the elements in the array.
+    Takes a list of data, and a plotting function (or a pair of setup
+    and update functions) that parses each of the elements in the array.
     Assumes that the plotting function is going to make one figure.
     """
-    def __init__(self, plot_data, plot_func, figure_handle=None, **plot_kwargs):
+    def __init__(self, plot_data, plot_func, figure_handle=None, reset_axes_on_update=False, **plot_kwargs):
         """
             plot_data - list of data objects to browse
-            plot_func - plotting function that accepts:
-                an element in the plot_data list as its first input
-                figure handle in which to plot as the second input
-                keyword arguments to be passed to the plot_func
+
+            plot_func can be a tuple (setup_func, update_func), or just one plotting function - update_func
+                If only one function is supplied, figure axes will be cleared on each update.
+                setup_func takes:
+                    the first element in plot_data list as its first input
+                    keyword arguments (same as plot_func)
+                setup_func outputs:
+                    **dictionary** of plot handles that goes as the second input to update_func
+
+                update_func is a plot-refreshing function that accepts 3 inputs:
+                    an element in the plot_data list as its first input
+                    output of the setup_func if it exists, or a figure handle on which to plot
+                    keyword arguments
+            
+            figure_handle - (default: None) matplotlib figure handle within which to instantiate the browser
+                Ideally, the setup function will handle this
+            
+            reset_axes_on_update (bool) - (default: False)
+
             plot_kwargs - these keyword arguments will be passed to plot_function after data and figure
         """
+        self.data = plot_data # list where each element serves as input to plot_func
+        self.plot_kwargs = plot_kwargs
+
+        if isinstance(plot_func, tuple):
+            assert len(plot_func) == 2
+            self.setup_func, self.plot_func = plot_func            
+            self.plot_handles = self.setup_func(self.data[0], **self.plot_kwargs)
+            figure_handle = list(self.plot_handles.values())[0].figure # figure_handle passed as input will be ignored
+        else:
+            self.setup_func, self.plot_func = None, plot_func
+            self.plot_handles = None
+            figure_handle = figure_handle
+
+        self.reset_axes_on_update = reset_axes_on_update
         # setup
         super().__init__(figure_handle)
 
-        self.data = plot_data # list where each element serves as input to plot_func
-        self.plot_func = plot_func
-        self.plot_kwargs = plot_kwargs
-
         # initialize
         self.set_default_keybindings()
+        self.show_memory_slots()
+        self.update() # draw the first instance
+        self.reset_axes()
         plt.show(block=False)
-        self.update()
         
     def get_current_data(self):
         return self.data[self._current_idx]
 
     def update(self):
-        self._fig.clear()
-        self.show_memory_slots()
-        self.plot_func(self.get_current_data(), self._fig, **self.plot_kwargs)
+        if self.setup_func is None:
+            self._fig.clear() # redraw the entire figure contents each time
+            self.show_memory_slots()
+            self.plot_func(self.get_current_data(), self._fig, **self.plot_kwargs)
+        else:
+            self.update_memory_slot_display()
+            self.plot_func(self.get_current_data(), self.plot_handles, **self.plot_kwargs)
+        if self.reset_axes_on_update:
+            self.reset_axes()
         plt.draw()
     
     def udpate_without_clear(self):
@@ -344,7 +387,7 @@ class VideoBrowser(GenericBrowser):
         
         self.set_default_keybindings()
         self.add_key_binding('e', self.extract_clip)
-        self.show_memory_slots()
+        self.show_memory_slots(pos='bottom left')
         plt.show(block=False)
         self.update()
 
