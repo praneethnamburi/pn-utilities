@@ -20,12 +20,82 @@ import matplotlib as mpl
 from PySide2.QtGui import QClipboard, QImage
 from matplotlib import pyplot as plt
 from matplotlib import axes as maxes
+from matplotlib.widgets import Button
 from decord import VideoReader
 
 from pntools import sampled
 
 CLIP_FOLDER = 'C:\\data\\_clipcollection'
 
+
+def _parse_fax(fax, ax_pos=(0.01, 0.01, 0.98, 0.98)):
+    assert isinstance(fax, (type(None), plt.Figure, maxes.Axes))
+    if fax is None:
+        f = plt.figure()
+        ax = f.add_axes(ax_pos)
+    elif isinstance(fax, plt.Figure):
+        f = fax
+        ax = f.add_axes(ax_pos)
+    else:
+        f = fax.figure
+        ax = fax
+    return f, ax
+
+def _parse_pos(pos):
+    if isinstance(pos, str):
+        updown, leftright = pos.replace('middle', 'center').split(' ')
+        assert updown in ('top', 'center', 'bottom')
+        assert leftright in ('left', 'center', 'right')
+        y = {'top': 1, 'center': 0.5, 'bottom': 0}[updown]
+        x = {'left': 0, 'center': 0.5, 'right': 1}[leftright]
+        pos = (x, y, updown, leftright)
+    assert len(pos) == 4
+    return pos
+
+
+class Buttons:
+    def __init__(self, parent):
+        self._button_list = []
+        self.parent = parent
+
+    def __len__(self):
+        return len(self())
+
+    def __getitem__(self, key):
+        d = self.asdict()
+        if isinstance(key, int) and key not in d:
+            return self()[key]
+        return d[key]
+    
+    def __call__(self):
+        return self._button_list
+
+    def asdict(self):
+        return {b.label._text: b for b in self()}
+
+    def add(self, text='Button', action_func=None, pos=None, w=0.25, h=0.05, buf=0.01):
+        nbtn = len(self)
+        if pos is None: # start adding at the top left corner
+            parent_fig = None
+            if isinstance(self.parent, plt.Figure):
+                parent_fig = self.parent
+            elif hasattr(self.parent, '_fig'):
+                parent_fig = self.parent._fig
+            
+            mul_factor = 1
+            if parent_fig is not None:
+                mul_factor = 6.4/parent_fig.get_size_inches()[0]
+            
+            btn_w = w*mul_factor
+            btn_h = h*mul_factor
+            btn_buf = buf
+            pos = (btn_buf, (1-btn_buf)-((btn_buf+btn_h)*(nbtn+1)), btn_w, btn_h)
+        
+        b = Button(plt.axes(pos), text)
+        if action_func is not None:
+            b.on_clicked(action_func)
+        self().append(b)
+        return b
 
 class GenericBrowser:
     """
@@ -40,7 +110,7 @@ class GenericBrowser:
         shift+right - last frame
         shift+up    - forward nframes/20 frames
         shift+down  - back nframes/20 frames
-    """
+    """ 
     def __init__(self, figure_handle=None):
         if figure_handle is None:
             figure_handle = plt.figure()
@@ -56,6 +126,7 @@ class GenericBrowser:
         self._idx_memory_slots = {str(k):None for k in range(1, 10)}
         self._memtext = None
         self._keybindingtext = None
+        self.buttons = Buttons(parent=self)
 
         # for cleanup
         self.cid = []
@@ -121,14 +192,14 @@ class GenericBrowser:
             self._current_idx = self._idx_memory_slots[key]
             self.update()
 
-    def reset_axes(self):
+    def reset_axes(self, event=None): # event in case it is used as a callback function
         """Reframe data within matplotlib axes."""
         for ax in self._fig.axes:
             if isinstance(ax, maxes.SubplotBase):
                 ax.relim()
                 ax.autoscale()
         plt.draw()
-    
+
     # Event responses - useful to pair with add_key_binding
     # These capabilities can be assigned to different key bindings
     def add_key_binding(self, key_name, on_press_function, description=None):
@@ -300,11 +371,17 @@ class PlotBrowser(GenericBrowser):
 
         # initialize
         self.set_default_keybindings()
+        self.buttons.add(text=f'Auto limits={self.reset_axes_on_update}', action_func=self.toggle_reset_on_update)
         self.show_memory_slots()
         self.update() # draw the first instance
         self.reset_axes()
         plt.show(block=False)
-        
+    
+    def toggle_reset_on_update(self, event=None):
+        btn = self.buttons[f'Auto limits={self.reset_axes_on_update}']
+        self.reset_axes_on_update = not self.reset_axes_on_update
+        btn.label._text = f'Auto limits={self.reset_axes_on_update}'
+
     def get_current_data(self):
         return self.data[self._current_idx]
 
@@ -424,8 +501,8 @@ class TextView:
         """
         self.text = self.parse_text(text)
         self._text = None # matplotlib text object
-        self._fig, self._ax = self.parse_fax(fax)
-        self._pos = self.parse_pos(pos)
+        self._fig, self._ax = _parse_fax(fax, ax_pos=(0.01, 0.01, 0.02, 0.02))
+        self._pos = _parse_pos(pos)
         self.setup()
         self.update()
     
@@ -433,30 +510,6 @@ class TextView:
         if isinstance(text, dict):
             text = [f'{key} - {val}' for key, val in text.items()] 
         return text
-
-    def parse_fax(self, fax):
-        assert isinstance(fax, (type(None), plt.Figure, maxes.Axes))
-        if fax is None:
-            f = plt.figure()
-            ax = f.add_axes((0.01, 0.01, 0.02, 0.98))
-        elif isinstance(fax, plt.Figure):
-            f = fax
-            ax = f.add_axes((0.01, 0.01, 0.02, 0.98))
-        else:
-            f = fax.figure
-            ax = fax
-        return f, ax
-    
-    def parse_pos(self, pos):
-        if isinstance(pos, str):
-            updown, leftright = pos.replace('middle', 'center').split(' ')
-            assert updown in ('top', 'center', 'bottom')
-            assert leftright in ('left', 'center', 'right')
-            y = {'top': 1, 'center': 0.5, 'bottom': 0}[updown]
-            x = {'left': 0, 'center': 0.5, 'right': 1}[leftright]
-            pos = (x, y, updown, leftright)
-        assert len(pos) == 4
-        return pos
 
     def setup(self):
         self._ax.axis('off')
