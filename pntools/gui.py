@@ -20,7 +20,7 @@ import matplotlib as mpl
 from PySide2.QtGui import QClipboard, QImage
 from matplotlib import pyplot as plt
 from matplotlib import axes as maxes
-from matplotlib.widgets import Button
+from matplotlib.widgets import Button as ButtonWidget
 from decord import VideoReader
 
 from pntools import sampled
@@ -53,10 +53,37 @@ def _parse_pos(pos):
     return pos
 
 
+class Button(ButtonWidget):
+    """Add a 'name' state to a matplotlib widget button"""
+    def __init__(self, ax, name:str, **kwargs) -> None:
+        super().__init__(ax, name, **kwargs)
+        self.name = name
+
+class ToggleButton(Button):
+    """
+    Add a toggle button to a matplotlib figure
+
+    For example usage, see plot browser
+    """
+    def __init__(self, ax, name:str, start_state:bool=True, **kwargs) -> None:
+        super().__init__(ax, name, **kwargs)
+        self.state = start_state
+        self.on_clicked(self.toggle)
+        self.set_text()
+    
+    def toggle(self, event=None):
+        self.state = not self.state
+        self.set_text()
+    
+    def set_text(self):
+        self.label._text = f'{self.name}={self.state}'
+
+
 class Buttons:
+    """Manager for buttons in a matplotlib figure or GUI (see GenericBrowser for example)"""
     def __init__(self, parent):
-        self._button_list = []
-        self.parent = parent
+        self._button_list : list[Button] = []
+        self.parent = parent # matplotlib figure, or something that has an _fig attribute that is a figure
 
     def __len__(self):
         return len(self())
@@ -71,9 +98,14 @@ class Buttons:
         return self._button_list
 
     def asdict(self):
-        return {b.label._text: b for b in self()}
+        return {b.name: b for b in self()}
 
-    def add(self, text='Button', action_func=None, pos=None, w=0.25, h=0.05, buf=0.01):
+    def add(self, text='Button', action_func=None, pos=None, w=0.25, h=0.05, buf=0.01, type_='Push', **kwargs):
+        """
+        Add a button to the parent figure / object
+        If pos is provided, then w, h, and buf will be ignored
+        """
+        assert type_ in ('Push', 'Toggle')
         nbtn = len(self)
         if pos is None: # start adding at the top left corner
             parent_fig = None
@@ -91,17 +123,28 @@ class Buttons:
             btn_buf = buf
             pos = (btn_buf, (1-btn_buf)-((btn_buf+btn_h)*(nbtn+1)), btn_w, btn_h)
         
-        b = Button(plt.axes(pos), text)
-        if action_func is not None:
-            b.on_clicked(action_func)
+        if type_ == 'Toggle':
+            b = ToggleButton(plt.axes(pos), text, **kwargs)
+        else:
+            b = Button(plt.axes(pos), text, **kwargs)
+
+        if action_func is not None: # more than one can be attached
+            if isinstance(action_func, (list, tuple)):
+                for af in action_func:
+                    b.on_clicked(af)
+            else:
+                b.on_clicked(action_func)
+        
         self().append(b)
         return b
+    
 
 class GenericBrowser:
     """
     Generic class to browse data. Meant to be extended before use.
 
     Default Navigation (arrow keys):
+        ctrl+k      - show all keybindings
         right       - forward one frame
         left        - back one frame
         up          - forward 10 frames
@@ -371,21 +414,16 @@ class PlotBrowser(GenericBrowser):
 
         # initialize
         self.set_default_keybindings()
-        self.buttons.add(text=f'Auto limits={self.reset_axes_on_update}', action_func=self.toggle_reset_on_update)
+        self.buttons.add(text='Auto limits', type_='Toggle', action_func=self.update, start_state=False)
         self.show_memory_slots()
         self.update() # draw the first instance
         self.reset_axes()
         plt.show(block=False)
-    
-    def toggle_reset_on_update(self, event=None):
-        btn = self.buttons[f'Auto limits={self.reset_axes_on_update}']
-        self.reset_axes_on_update = not self.reset_axes_on_update
-        btn.label._text = f'Auto limits={self.reset_axes_on_update}'
 
     def get_current_data(self):
         return self.data[self._current_idx]
 
-    def update(self):
+    def update(self, event=None): # event = None lets this function be attached as a callback
         if self.setup_func is None:
             self._fig.clear() # redraw the entire figure contents each time
             self.show_memory_slots()
@@ -393,7 +431,7 @@ class PlotBrowser(GenericBrowser):
         else:
             self.update_memory_slot_display()
             self.plot_func(self.get_current_data(), self.plot_handles, **self.plot_kwargs)
-        if self.reset_axes_on_update:
+        if self.buttons['Auto limits'].state: # is True
             self.reset_axes()
         plt.draw()
     
