@@ -87,7 +87,7 @@ class Buttons:
     """Manager for buttons in a matplotlib figure or GUI (see GenericBrowser for example)"""
     def __init__(self, parent):
         self._button_list : list[Button] = []
-        self.parent = parent # matplotlib figure, or something that has an _fig attribute that is a figure
+        self.parent = parent # matplotlib figure, or something that has a 'figure' attribute that is a figure
 
     def __len__(self):
         return len(self())
@@ -112,15 +112,8 @@ class Buttons:
         assert type_ in ('Push', 'Toggle')
         nbtn = len(self)
         if pos is None: # start adding at the top left corner
-            parent_fig = None
-            if isinstance(self.parent, plt.Figure):
-                parent_fig = self.parent
-            elif hasattr(self.parent, '_fig'):
-                parent_fig = self.parent._fig
-            
-            mul_factor = 1
-            if parent_fig is not None:
-                mul_factor = 6.4/parent_fig.get_size_inches()[0]
+            parent_fig = self.parent.figure
+            mul_factor = 6.4/parent_fig.get_size_inches()[0]
             
             btn_w = w*mul_factor
             btn_h = h*mul_factor
@@ -174,7 +167,7 @@ class GenericBrowser:
         if figure_handle is None:
             figure_handle = plt.figure()
         assert isinstance(figure_handle, plt.Figure)
-        self._fig = figure_handle
+        self.figure = figure_handle
         self._keypressdict = {} # managed by add_key_binding
         self._bindings_removed = {}
         
@@ -189,8 +182,8 @@ class GenericBrowser:
 
         # for cleanup
         self.cid = []
-        self.cid.append(self._fig.canvas.mpl_connect('key_press_event', self))
-        self.cid.append(self._fig.canvas.mpl_connect('close_event', self))
+        self.cid.append(self.figure.canvas.mpl_connect('key_press_event', self))
+        self.cid.append(self.figure.canvas.mpl_connect('close_event', self))
     
     def update(self): # extended classes are expected to implement their update function!
         self.update_memory_slot_display()
@@ -222,7 +215,7 @@ class GenericBrowser:
     def cleanup(self):
         """Perform cleanup, for example, when the figure is closed."""
         for this_cid in self.cid:
-            self._fig.canvas.mpl_disconnect(this_cid)
+            self.figure.canvas.mpl_disconnect(this_cid)
         self.mpl_restore_bindings()
 
     def mpl_restore_bindings(self):
@@ -253,7 +246,7 @@ class GenericBrowser:
 
     def reset_axes(self, event=None): # event in case it is used as a callback function
         """Reframe data within matplotlib axes."""
-        for ax in self._fig.axes:
+        for ax in self.figure.axes:
             if isinstance(ax, maxes.SubplotBase):
                 ax.relim()
                 ax.autoscale()
@@ -315,12 +308,12 @@ class GenericBrowser:
     
     def copy_to_clipboard(self):
         buf = io.BytesIO()
-        self._fig.savefig(buf)
+        self.figure.savefig(buf)
         QClipboard().setImage(QImage.fromData(buf.getvalue()))
         buf.close()
     
     def show_memory_slots(self, pos='bottom left'):
-        self._memtext = TextView(self._idx_memory_slots, fax=self._fig, pos=pos)
+        self._memtext = TextView(self._idx_memory_slots, fax=self.figure, pos=pos)
     
     def update_memory_slot_display(self):
         """Refresh memory slot text if it is not hidden"""
@@ -334,7 +327,7 @@ class GenericBrowser:
         self._memtext = None
 
     def show_key_bindings(self, f=None, pos='bottom right'):
-        f = {None: self._fig, 'new': plt.figure()}[f]
+        f = {None: self.figure, 'new': plt.figure()}[f]
         text = []
         for shortcut, (_, description) in self._keypressdict.items():
             text.append(f'{shortcut:<12} - {description}')
@@ -367,7 +360,7 @@ class GenericBrowser:
             pan_ax='x'
         else:
             pan_ax='y'
-        ax = self._filter_sibling_axes(self._fig.axes, share=pan_ax, get_bool=False)
+        ax = self._filter_sibling_axes(self.figure.axes, share=pan_ax, get_bool=False)
         if ax is None:
             return
         for this_ax in ax:
@@ -441,9 +434,9 @@ class PlotBrowser(GenericBrowser):
 
     def update(self, event=None): # event = None lets this function be attached as a callback
         if self.setup_func is None:
-            self._fig.clear() # redraw the entire figure contents each time
+            self.figure.clear() # redraw the entire figure contents each time
             self.show_memory_slots()
-            self.plot_func(self.get_current_data(), self._fig, **self.plot_kwargs)
+            self.plot_func(self.get_current_data(), self.figure, **self.plot_kwargs)
         else:
             self.update_memory_slot_display()
             self.plot_func(self.get_current_data(), self.plot_handles, **self.plot_kwargs)
@@ -463,7 +456,7 @@ class SignalBrowser(GenericBrowser):
     def __init__(self, plot_data, titlefunc=None, figure_handle=None):
         super().__init__(figure_handle)
 
-        self._ax = self._fig.subplots(1, 1)
+        self._ax = self.figure.subplots(1, 1)
         this_data = plot_data[0]
         if isinstance(this_data, sampled.Data):
             self._plot = self._ax.plot(this_data.t, this_data())[0]
@@ -507,7 +500,7 @@ class VideoBrowser(GenericBrowser):
         with open(vid_name, 'rb') as f:
             self.data = VideoReader(f)
         
-        self._ax = self._fig.subplots(1, 1)
+        self._ax = self.figure.subplots(1, 1)
         this_data = self.data[0]
         self._im = self._ax.imshow(this_data.asnumpy())
 
@@ -555,7 +548,7 @@ class TextView:
         """
         self.text = self.parse_text(text)
         self._text = None # matplotlib text object
-        self._fig, self._ax = _parse_fax(fax, ax_pos=(0.01, 0.01, 0.02, 0.02))
+        self.figure, self._ax = _parse_fax(fax, ax_pos=(0.01, 0.01, 0.02, 0.02))
         self._pos = _parse_pos(pos)
         self.setup()
         self.update()
