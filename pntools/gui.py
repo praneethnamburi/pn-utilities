@@ -25,6 +25,10 @@ from decord import VideoReader
 
 from pntools import sampled
 
+import numpy as np
+from matplotlib.widgets import LassoSelector
+from matplotlib.path import Path
+
 CLIP_FOLDER = 'C:\\data\\_clipcollection'
 
 
@@ -575,3 +579,43 @@ class TextView:
         x, y, va, ha = self._pos
         self._text = self._ax.text(x, y, '\n'.join(self.text), va=va, ha=ha, family='monospace')
         plt.draw()
+
+
+class SimpleSelector:
+    def __init__(self):
+        f, ax = plt.subplots(1, 1)
+        self.buttons = Buttons(parent=f)
+        self.buttons.add(text='Start selection', type_='Push', action_func=self.start)
+        self.buttons.add(text='Stop selection', type_='Push', action_func=self.stop)
+        self.ax = ax
+        self.x = np.random.rand(10)
+        self.t = np.r_[:1:0.1]
+        self.plot_handles = {}
+        self.plot_handles['data'], = ax.plot(self.t, self.x)
+        self.plot_handles['selected'], = ax.plot([], [], '.')
+        plt.show(block=False)
+        self.start()
+        self.ind = set()
+    
+    def get_points(self):
+        return np.vstack((self.t, self.x)).T
+
+    def onselect(self, verts):
+        """Select if not previously selected; Unselect if previously selected"""
+        path = Path(verts)
+        selected_ind = set(np.nonzero(path.contains_points(self.get_points()))[0])
+        existing_ind = self.ind.intersection(selected_ind)
+        new_ind = selected_ind - existing_ind
+        self.ind = (self.ind - existing_ind).union(new_ind)
+        idx = list(self.ind)
+        if idx:
+            self.plot_handles['selected'].set_data(self.t[idx], self.x[idx])
+        else:
+            self.plot_handles['selected'].set_data([], [])
+        plt.draw()
+
+    def start(self, event=None):
+        self.lasso = LassoSelector(self.ax, onselect=self.onselect)
+
+    def stop(self, event=None):
+        self.lasso.disconnect_events()
