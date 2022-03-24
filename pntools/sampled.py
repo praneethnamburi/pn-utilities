@@ -411,8 +411,17 @@ class Data: # Signal processing
         if order is None:
             order = 6
         b, a = butter(order, cutoff/(0.5*self.sr), btype=btype, analog=False)
+
+        nan_manip = False
+        if (nan_bool := np.isnan(self._sig)).any():
+            nan_manip = True
+            self = self.interpnan() # interpolate missing values before applying an IIR filter
+
         proc_sig = filtfilt(b, a, self._sig, axis=self.axis)
-        return self._clone(proc_sig, (btype+'pass', {'filter':'butter', 'cutoff':cutoff, 'order':order}))
+        if nan_manip:
+            proc_sig[nan_bool] = np.NaN # put back the NaNs in the same place
+
+        return self._clone(proc_sig, (btype+'pass', {'filter':'butter', 'cutoff':cutoff, 'order':order, 'NaN manipulation': nan_manip}))
 
     def lowpass(self, cutoff, order=None):
         return self._butterfilt(cutoff, order, 'low')
