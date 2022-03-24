@@ -59,15 +59,19 @@ class Button(ButtonWidget):
         super().__init__(ax, name, **kwargs)
         self.name = name
 
-class ToggleButton(Button):
+class StateButton(Button): # store a number/coordinate
+    def __init__(self, ax, name: str, start_state, **kwargs) -> None:
+        super().__init__(ax, name, **kwargs)
+        self.state = start_state # stores something in the state
+
+class ToggleButton(StateButton):
     """
     Add a toggle button to a matplotlib figure
 
     For example usage, see plot browser
     """
     def __init__(self, ax, name:str, start_state:bool=True, **kwargs) -> None:
-        super().__init__(ax, name, **kwargs)
-        self.state = start_state
+        super().__init__(ax, name, start_state, **kwargs)
         self.on_clicked(self.toggle)
         self.set_text()
     
@@ -138,6 +142,18 @@ class Buttons:
         self().append(b)
         return b
     
+
+class ButtonFigureDemo(plt.Figure):
+    def __init__(self, *args, **kwargs) -> None:
+        super().__init__(*args, **kwargs)
+        self.buttons = Buttons(parent=self)
+        self.buttons.add(text='test', type_='Toggle')
+        self.buttons.add(text='push button', type_='Push', action_func=self.test_callback)
+        plt.show(block=False)
+    
+    def test_callback(self, event=None):
+        print(event)
+        
 
 class GenericBrowser:
     """
