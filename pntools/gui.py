@@ -151,6 +151,11 @@ class ButtonFigureDemo(plt.Figure):
 class GenericBrowser:
     """
     Generic class to browse data. Meant to be extended before use.
+    Features:
+        Navigate using arrow keys.
+        Store positions in memory using number keys (e.g. for flipping between positions when browsing a video).
+        Quickly add toggle and push buttons.
+        Design custom functions and assign hotkeys to them (add_key_binding)
 
     Default Navigation (arrow keys):
         ctrl+k      - show all keybindings
@@ -434,7 +439,7 @@ class PlotBrowser(GenericBrowser):
 
     def update(self, event=None): # event = None lets this function be attached as a callback
         if self.setup_func is None:
-            self.figure.clear() # redraw the entire figure contents each time
+            self.figure.clear() # redraw the entire figure contents each time, NOT recommended
             self.show_memory_slots()
             self.plot_func(self.get_current_data(), self.figure, **self.plot_kwargs)
         else:
