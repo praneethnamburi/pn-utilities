@@ -16,22 +16,24 @@ import os
 from datetime import timedelta
 
 import ffmpeg
+import numpy as np
 import matplotlib as mpl
 from PySide2.QtGui import QClipboard, QImage
 from matplotlib import pyplot as plt
 from matplotlib import axes as maxes
+from matplotlib import lines as mlines
 from matplotlib.widgets import Button as ButtonWidget
+from matplotlib.widgets import LassoSelector as LassoSelectorWidget
+from matplotlib.path import Path
 from decord import VideoReader
 
 from pntools import sampled
 
-import numpy as np
-from matplotlib.widgets import LassoSelector
-from matplotlib.path import Path
 
 CLIP_FOLDER = 'C:\\data\\_clipcollection'
 
 
+### Helper functions
 def _parse_fax(fax, ax_pos=(0.01, 0.01, 0.98, 0.98)):
     assert isinstance(fax, (type(None), plt.Figure, maxes.Axes))
     if fax is None:
@@ -57,6 +59,7 @@ def _parse_pos(pos):
     return pos
 
 
+### Extended widget classes
 class Button(ButtonWidget):
     """Add a 'name' state to a matplotlib widget button"""
     def __init__(self, ax, name:str, **kwargs) -> None:
@@ -87,6 +90,58 @@ class ToggleButton(StateButton):
         self.label._text = f'{self.name}={self.state}'
 
 
+class Selector:
+    """
+    Select points in a plot using the lasso selection widget
+    Indices of selected points are stored in self.sel
+
+    Example:
+        f, ax = plt.subplots(1, 1)
+        ph, = ax.plot(np.random.rand(20))
+        plt.show(block=False)
+        ls = gui.Lasso(ph)
+        ls.start()
+        -- play around with selecting points --
+        ls.stop() -> disconnects the events
+    """
+    def __init__(self, plot_handle) -> None:
+        """plot_handle - matplotlib.lines.Line2D object returned by plt.plot function"""
+        assert isinstance(plot_handle, mlines.Line2D)
+        self.plot_handle = plot_handle
+        self.xdata, self.ydata = plot_handle.get_data()
+        self.ax = plot_handle.axes
+        self.overlay_handle, = self.ax.plot([], [], ".")
+        self.sel = np.zeros(self.xdata.shape, dtype=bool)
+        self.is_active = False
+
+    def get_data(self):
+        return np.vstack((self.xdata, self.ydata)).T
+
+    def onselect(self, verts):
+        """Select if not previously selected; Unselect if previously selected"""
+        selected_ind = Path(verts).contains_points(self.get_data())
+        self.sel = np.logical_xor(selected_ind, self.sel)
+        sel_x = list(self.xdata[self.sel])
+        sel_y = list(self.ydata[self.sel])
+        self.overlay_handle.set_data(sel_x, sel_y)
+        plt.draw()
+    
+    def start(self, event=None): # split callbacks when using start and stop buttons
+        self.lasso = LassoSelectorWidget(self.plot_handle.axes, self.onselect)
+        self.is_active = True
+
+    def stop(self, event=None):
+        self.lasso.disconnect_events()
+        self.is_active = False
+    
+    def toggle(self, event=None): # one callback when activated using a toggle button
+        if self.is_active:
+            self.stop(event)
+        else:
+            self.start(event)
+
+
+### Managers for extended widget classes defined here (used by Generic browser)
 class Buttons:
     """Manager for buttons in a matplotlib figure or GUI (see GenericBrowser for example)"""
     def __init__(self, parent):
@@ -138,18 +193,24 @@ class Buttons:
         
         self().append(b)
         return b
-    
 
-class ButtonFigureDemo(plt.Figure):
-    def __init__(self, *args, **kwargs) -> None:
-        super().__init__(*args, **kwargs)
-        self.buttons = Buttons(parent=self)
-        self.buttons.add(text='test', type_='Toggle')
-        self.buttons.add(text='push button', type_='Push', action_func=self.test_callback)
-        plt.show(block=False)
+
+class Selectors:
+    """Manager for selector objects - for picking points on line2D objects"""
+    def __init__(self, parent):
+        self._lasso_list : list[Selector] = []
+        self.parent = parent
     
-    def test_callback(self, event=None):
-        print(event)
+    def __call__(self):
+        return self._lasso_list
+    
+    def __len__(self):
+        return len(self())
+
+    def add(self, plot_handle):
+        ls = Selector(plot_handle)
+        self._lasso_list.append(ls)
+        return ls
         
 
 class GenericBrowser:
@@ -188,6 +249,7 @@ class GenericBrowser:
         self._memtext = None
         self._keybindingtext = None
         self.buttons = Buttons(parent=self)
+        self.selectors = Selectors(parent=self)
 
         # for cleanup
         self.cid = []
@@ -260,6 +322,8 @@ class GenericBrowser:
                 ax.relim()
                 ax.autoscale()
         plt.draw()
+
+    ## select plots
 
     # Event responses - useful to pair with add_key_binding
     # These capabilities can be assigned to different key bindings
@@ -437,6 +501,9 @@ class PlotBrowser(GenericBrowser):
         self.update() # draw the first instance
         self.reset_axes()
         plt.show(block=False)
+        # add selectors after drawing!
+        s0 = self.selectors.add(list(self.plot_handles.values())[0])
+        self.buttons.add(text='Selector 0', type_='Toggle', action_func=s0.toggle, start_state=s0.is_active)
 
     def get_current_data(self):
         return self.data[self._current_idx]
@@ -581,7 +648,20 @@ class TextView:
         plt.draw()
 
 
-class SimpleSelector:
+### -------- Demonstration/example classes
+class ButtonFigureDemo(plt.Figure):
+    def __init__(self, *args, **kwargs) -> None:
+        super().__init__(*args, **kwargs)
+        self.buttons = Buttons(parent=self)
+        self.buttons.add(text='test', type_='Toggle')
+        self.buttons.add(text='push button', type_='Push', action_func=self.test_callback)
+        plt.show(block=False)
+    
+    def test_callback(self, event=None):
+        print(event)
+
+
+class SelectorFigureDemo:
     def __init__(self):
         f, ax = plt.subplots(1, 1)
         self.buttons = Buttons(parent=f)
@@ -615,7 +695,7 @@ class SimpleSelector:
         plt.draw()
 
     def start(self, event=None):
-        self.lasso = LassoSelector(self.ax, onselect=self.onselect)
+        self.lasso = LassoSelectorWidget(self.ax, onselect=self.onselect)
 
     def stop(self, event=None):
         self.lasso.disconnect_events()
