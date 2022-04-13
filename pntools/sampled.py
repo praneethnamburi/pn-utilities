@@ -295,8 +295,8 @@ class Interval:
         
     def _t(self, rate):
         _t = [self.start.time]
-        while _t[-1] <= self.end.time:
-            _t.append(_t[-1] + 1./rate)
+        while (this_t := _t[-1] + 1./rate) <= self.end.time:
+            _t.append(this_t)
         return _t
 
     def __add__(self, other):
