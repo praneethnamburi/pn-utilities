@@ -499,7 +499,7 @@ class Data: # Signal processing
                 x3[2.]                              # this should error out because it is outside the range
                 x3[2], x3[-1], x3[len(x3)-1]        # this is effectively like array-indexing, last two should be the same
 
-            Indexing with interval, slice, and range returns sampled.Data:
+            Indexing with interval or slice returns sampled.Data:
                 x3[5.:5.05]()                       # should return only one value
                 x3[5.:5.05].interval().end          # should return 5
                 x3[:1]()                            # retrieve by position if it is an integer - Equivalent to x3[0], but for signals with axis=1, x3[:1] will preserve dimensionality of retrieved signal
@@ -512,30 +512,31 @@ class Data: # Signal processing
                 key = self.t[key]
             return interp1d(self.t, self._sig, axis=self.axis)(key)
 
-        assert isinstance(key, (Interval, slice, range))
+        assert isinstance(key, (Interval, slice))
         if isinstance(key, Interval):
             return self.take_by_interval(key)
-        elif isinstance(key, slice):
-            assert key.step is None # otherwise, the sampling rate is going to change, and could cause aliasing without proper filtering
-            # IF INTEGERS, assume indices, IF FLOAT, assume time
-            if isinstance(key.start, float) or isinstance(key.stop, float):
-                intvl_start = key.start
-                if key.start is None:
-                    intvl_start = self.t_start()
-                intvl_end = key.stop
-                if key.stop is None:
-                    intvl_end = self.t_end()
-            else: # if samples, do python indexing and don't include the end?
-                assert isinstance(key.start, (int, type(None))) and isinstance(key.stop, (int, type(None)))
-                if key.start is None:
-                    intvl_start = self.t_start()
-                else:
-                    intvl_start = self.t[sorted((0, key.start, len(self)-1))[1]] # clip to limits
-                if key.stop is None:
-                    intvl_end = self.t_end()
-                else:
-                    intvl_end = self.t[sorted((0, key.stop-1, len(self)-1))[1]]
-            return self.take_by_interval(Interval(float(intvl_start), float(intvl_end), sr=self.sr))
+        
+        # From here on, key is a slice object
+        assert key.step is None # otherwise, the sampling rate is going to change, and could cause aliasing without proper filtering
+        # IF INTEGERS, assume indices, IF FLOAT, assume time
+        if isinstance(key.start, float) or isinstance(key.stop, float):
+            intvl_start = key.start
+            if key.start is None:
+                intvl_start = self.t_start()
+            intvl_end = key.stop
+            if key.stop is None:
+                intvl_end = self.t_end()
+        else: # if samples, do python indexing and don't include the end?
+            assert isinstance(key.start, (int, type(None))) and isinstance(key.stop, (int, type(None)))
+            if key.start is None:
+                intvl_start = self.t_start()
+            else:
+                intvl_start = self.t[sorted((0, key.start, len(self)-1))[1]] # clip to limits
+            if key.stop is None:
+                intvl_end = self.t_end()
+            else:
+                intvl_end = self.t[sorted((0, key.stop-1, len(self)-1))[1]]
+        return self.take_by_interval(Interval(float(intvl_start), float(intvl_end), sr=self.sr))
 
     def make_running_win(self, win_size=0.25, win_inc=0.1):
         win_size_samples = (round(win_size*self.sr)//2)*2 + 1 # ensure odd number of samples
