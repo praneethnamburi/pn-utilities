@@ -111,9 +111,9 @@ class Time:
         else:
             raise TypeError(other, "Unexpected input type! Input either a float for time, integer for sample, or time object")
 
-    def to_interval(self, zero=None, iter_rate=None):
+    def to_interval(self, iter_rate=None):
         """Return an interval object with start and end times being the same"""
-        return Interval(self, self, zero, self.sr, iter_rate)
+        return Interval(self, self, self.sr, iter_rate)
     
     def __repr__(self):
         return "time={:.3f} s, sample={}, sr={} Hz ".format(self.time, self.sample, self.sr) + super().__repr__()
@@ -208,16 +208,12 @@ class Interval:
         for nearest_sample, time, index in intvl:
             print((nearest_sample, time, index))
     """
-    def __init__(self, start, end, zero=None, sr=30., iter_rate=None):
+    def __init__(self, start, end, sr=30., iter_rate=None):
         # if isinstance(start, (int, float)) and sr is not None:
         self.start = self._process_inp(start, sr)
         self.end = self._process_inp(end, sr)
-        if zero is None:
-            self.zero = self.start
-        else:
-            self.zero = self._process_inp(zero, sr)
 
-        assert self.start.sr == self.end.sr == self.zero.sr # interval is defined for a specific sampled dataset
+        assert self.start.sr == self.end.sr # interval is defined for a specific sampled dataset
         
         self._index = 0
         if iter_rate is None:
@@ -240,7 +236,6 @@ class Interval:
         sr_val = float(sr_val)
         self.start.sr = sr_val
         self.end.sr = sr_val
-        self.zero.sr = sr_val
         
     def change_sr(self, new_sr):
         self.sr = new_sr
@@ -290,8 +285,7 @@ class Interval:
     @property
     def t(self):
         """Time Vector relative to t_zero"""
-        tzero = self.zero.time
-        return [t - tzero for t in self.t_data]
+        return self.t_data
         
     def _t(self, rate):
         _t = [self.start.time]
@@ -301,35 +295,33 @@ class Interval:
 
     def __add__(self, other):
         """Used to shift an interval, use union to find a union"""
-        return Interval(self.start+other, self.end+other, zero=self.zero+other, sr=self.sr, iter_rate=self.iter_rate)
+        return Interval(self.start+other, self.end+other, sr=self.sr, iter_rate=self.iter_rate)
 
     def __sub__(self, other):
-        return Interval(self.start-other, self.end-other, zero=self.zero-other, sr=self.sr, iter_rate=self.iter_rate)
+        return Interval(self.start-other, self.end-other, sr=self.sr, iter_rate=self.iter_rate)
 
     def add(self, other):
         """Add to object, rather than returning a new object"""
         self.start = self.start + other
         self.end = self.end + other
-        self.zero = self.zero + other
 
     def sub(self, other):
         self.start = self.start - other
         self.end = self.end - other
-        self.zero = self.zero - other
 
     def union(self, other):
         """ 
         Merge intervals to make an interval from minimum start time to
         maximum end time. Other can be an interval, or a tuple of intervals.
 
-        iter_rate, sr, and zero are inherited from the original
+        iter_rate and sr are inherited from the original
         event. Therefore, e1.union(e2) doesn't have to be the same as
         e2.union(e1)
         """
         assert self.sr == other.sr
         this_start = (self.start, other.start)[np.argmin((self.start.time, other.start.time))]
         this_end = (self.end, other.end)[np.argmax((self.end.time, other.end.time))]
-        return Interval(this_start, this_end, zero=self.zero, sr=self.sr, iter_rate=self.iter_rate)
+        return Interval(this_start, this_end, sr=self.sr, iter_rate=self.iter_rate)
 
 
 class Data: # Signal processing
@@ -358,6 +350,8 @@ class Data: # Signal processing
     def __call__(self, col=None):
         """Return either a specific column or the entire set 2D signal"""
         if col is not None:
+            if isinstance(col, str): # supply an empty string to take advantage of easy plotting
+                return self.t, self._sig
             assert isinstance(col, int) and col < len(self)
             slc = [slice(None)]*self._sig.ndim
             slc[(self.axis+1)%self._sig.ndim] = col
@@ -473,13 +467,75 @@ class Data: # Signal processing
     def dur(self):
         return (len(self)-1)/self.sr
     
-    def __getitem__(self, key): 
-        # NOTE: Generalize for multi-dimensional signals!
-        assert isinstance(key, Interval)
+    def t_start(self):
+        return self._t0
+    
+    def t_end(self):
+        return self._t0 + (len(self)-1)/self.sr
+    
+    def interval(self):
+        return Interval(self.t_start(), self.t_end(), sr=self.sr)
+
+    def take_by_interval(self, key: Interval):
+        assert key.sr == self.sr
         his = self._history + [('slice', key)]
         offset = round(self._t0*self.sr)
-        proc_sig = self._sig.take(indices=range(key.start.sample-offset, key.end.sample-offset), axis=self.axis)
-        return self.__class__(proc_sig, self.sr, self.axis, his, key.start.time)
+        rng_start = sorted((0, key.start.sample-offset, len(self)-1))[1]
+        rng_end = sorted((0, key.end.sample-offset+1, len(self)))[1] # +1 because interval object includes both ends!
+        proc_sig = self._sig.take(indices=range(rng_start, rng_end), axis=self.axis)
+        return self.__class__(proc_sig, self.sr, self.axis, his, self.t[rng_start])
+
+    def __getitem__(self, key):
+        """
+        Use this function to slice the signal in time.
+        Use __call__ to retrieve one column of data, or all columns.
+
+        Example usage:
+            x3 = sampled.Data(np.random.random((10, 3)), sr=2, t0=5.)
+            
+            Indexing with list, tuple, int, or float will return numpy arrays:
+                x3[[5.05, 5.45]]                    # returns linearly interpolated values
+                x3[5.05]                            # returns linearly interpolated value
+                x3[2.]                              # this should error out because it is outside the range
+                x3[2], x3[-1], x3[len(x3)-1]        # this is effectively like array-indexing, last two should be the same
+
+            Indexing with interval, slice, and range returns sampled.Data:
+                x3[5.:5.05]()                       # should return only one value
+                x3[5.:5.05].interval().end          # should return 5
+                x3[:1]()                            # retrieve by position if it is an integer - Equivalent to x3[0], but for signals with axis=1, x3[:1] will preserve dimensionality of retrieved signal
+                x3[0.:1.]()                         # this will return an empty signal, and the interval() on that won't make sense
+                x3[:5.5]()                          # should return first two values 
+                x3[0:5.5](), x3[5.0:5.5]()          # should be the same as above, also examine x3[0:5.5].interval().start -> this should be 5.0
+        """
+        if isinstance(key, (list, tuple, float, int)): # return signal (interpolated if needbe) values at those times
+            if isinstance(key, int):
+                key = self.t[key]
+            return interp1d(self.t, self._sig, axis=self.axis)(key)
+
+        assert isinstance(key, (Interval, slice, range))
+        if isinstance(key, Interval):
+            return self.take_by_interval(key)
+        elif isinstance(key, slice):
+            assert key.step is None # otherwise, the sampling rate is going to change, and could cause aliasing without proper filtering
+            # IF INTEGERS, assume indices, IF FLOAT, assume time
+            if isinstance(key.start, float) or isinstance(key.stop, float):
+                intvl_start = key.start
+                if key.start is None:
+                    intvl_start = self.t_start()
+                intvl_end = key.stop
+                if key.stop is None:
+                    intvl_end = self.t_end()
+            else: # if samples, do python indexing and don't include the end?
+                assert isinstance(key.start, (int, type(None))) and isinstance(key.stop, (int, type(None)))
+                if key.start is None:
+                    intvl_start = self.t_start()
+                else:
+                    intvl_start = self.t[sorted((0, key.start, len(self)-1))[1]] # clip to limits
+                if key.stop is None:
+                    intvl_end = self.t_end()
+                else:
+                    intvl_end = self.t[sorted((0, key.stop-1, len(self)-1))[1]]
+            return self.take_by_interval(Interval(float(intvl_start), float(intvl_end), sr=self.sr))
 
     def make_running_win(self, win_size=0.25, win_inc=0.1):
         win_size_samples = (round(win_size*self.sr)//2)*2 + 1 # ensure odd number of samples
@@ -524,7 +580,7 @@ class Data: # Signal processing
         T = 1/self.sr
         f = fftfreq(N, T)[:N//2]
         amp = 2.0/N * np.abs(fft(self._sig)[0:N//2])
-        return amp, f
+        return f, amp
     
     def diff(self):
         if self._sig.ndim == 2:
