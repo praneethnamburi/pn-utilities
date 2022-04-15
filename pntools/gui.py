@@ -622,10 +622,13 @@ class TextView:
         text is an array of strings
         fax is either a figure or an axis handle
         """
+        def rescale(xy, margin=0.01):
+            return (1-2*margin)*xy + margin
+
         self.text = self.parse_text(text)
         self._text = None # matplotlib text object
-        self.figure, self._ax = _parse_fax(fax, ax_pos=(0.01, 0.01, 0.02, 0.02))
         self._pos = _parse_pos(pos)
+        self.figure, self._ax = _parse_fax(fax, ax_pos=(rescale(self._pos[0]), rescale(self._pos[1]), 0.02, 0.02))
         self.setup()
         self.update()
     
