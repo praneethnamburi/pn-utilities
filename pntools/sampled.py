@@ -422,6 +422,16 @@ class Data: # Signal processing
     
     def highpass(self, cutoff, order=None):
         return self._butterfilt(cutoff, order, 'high')
+    
+    def get_trend_airPLS(self, *args, **kwargs):
+        from airPLS import airPLS
+        trend = np.apply_along_axis(airPLS, self.axis, self._sig, *args, **kwargs)
+        return self._clone(trend, ('get_trend_airPLS', {'args':args, **kwargs}))
+        
+    def detrend_airPLS(self, *args, **kwargs):
+        trend = self.get_trend_airPLS(*args, **kwargs)
+        proc_sig = self._sig - trend()
+        return self._clone(proc_sig, ('detrend_airPLS', {'args':args, **kwargs}))
 
     def medfilt(self, order=11):
         """
@@ -451,6 +461,13 @@ class Data: # Signal processing
     def shift_baseline(self, offset): 
         # you can use numpy broadcasting to shift each signal if multi-dimensional
         return self._clone(self._sig - offset, ('shift_baseline', offset))
+    
+    def shift_left(self, time:float=None):
+        ret = self._clone(self._sig, ('shift_left', time))
+        if time is None: # shift to zero
+            time = self._t0
+        ret._t0 = self._t0 - time
+        return ret
     
     def scale(self, scale_factor):
         return self._clone(self._sig/scale_factor, ('scale', scale_factor))
