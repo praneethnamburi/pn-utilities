@@ -628,25 +628,45 @@ class Data: # Signal processing
             kwargs.pop('axis')
             proc_sig = func(self._sig, *args, **kwargs)
         return self._clone(proc_sig, ('apply', {'func': func, 'args': args, 'kwargs': kwargs}))
+    
+    def regress(self, ref_sig):
+        """Regress a reference signal out of the current signal"""
+        from sklearn.linear_model import LinearRegression
+        assert ref_sig().ndim == self().ndim == 1 # currently only defined for 1D signals
+        assert ref_sig.sr == self.sr
+        assert len(ref_sig) == len(self)
+        reg = LinearRegression().fit(ref_sig().reshape(-1, 1), self())
+        prediction = reg.coef_[0]*ref_sig() + reg.intercept_
+        return self._clone(self() - prediction, ('Regressed with reference', ref_sig()))
         
 
 class Event(Interval):
-    def __init__(self, start, end, **kwargs):
+    def __init__(self, start, end=None, **kwargs):
         """
         Interval with labels.
 
         kwargs:
         labels (list of strings) - hastags defining the event
         """
+        if end is None: # typecast interval into an event
+            assert isinstance(start, Interval)
+            end = start.end
+            start = start.start
         self.labels = kwargs.pop('labels', [])
         super().__init__(start, end, **kwargs)
+    
+    def add_labels(self, *new_labels):
+        self.labels += list(new_labels)
+    
+    def remove_labels(self, *labels_to_remove):
+        self.labels = [label for label in self.labels if label not in labels_to_remove]
 
 
 class Events(list):
     """List of event objects that can be selected by labels using the 'get' method."""
     def append(self, key):
-        assert isinstance(key, Event)
-        super().append(key)
+        assert isinstance(key, (Event, Interval))
+        super().append(Event(key))
     
     def get(self, label):
         return Events([e for e in self if label in e.labels])
@@ -690,6 +710,42 @@ class RunningWin:
     
     def __len__(self):
         return self.n_win
+
+
+class Siglets:
+    """A collection of pieces of signals to do event-triggered analyses"""
+    def __init__(self, sig:Data, events:Events, window=None):
+        self.parent = sig
+        if window is not None: # use window when all events are of the same length
+            if isinstance(window, Interval):
+                assert window.sr == sig.sr
+            else:
+                assert len(window) == 2
+                window = Interval(window[0], window[1], sr=sig.sr)
+            assert isinstance(events, (list, tuple))
+            events = Events([Event(window + ev_time) for ev_time in events])
+        self.window = window
+        self.events = events
+    
+    @property
+    def sr(self):
+        return self.parent.sr
+
+    def __call__(self, func=None):
+        siglet_list = [self.parent[ev]() for ev in self.events]
+        if func is None:
+            return np.asarray(siglet_list)
+        return self.apply(func)
+    
+    def apply(self, func): # returns a numpy array
+        return func(self(), axis=0)
+    
+    def mean(self):
+        assert self.is_uniform()
+        return Data()
+    
+    def is_uniform(self):
+        return (len(set([ev.dur_sample for ev in self.events])) == 1) # if all events are of the same size
 
 
 def interpnan(sig, maxgap=None, **kwargs):
