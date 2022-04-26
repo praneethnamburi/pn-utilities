@@ -4,7 +4,7 @@ Tools for working with sampled data
 
 import collections
 import numpy as np
-from scipy.signal import hilbert, firwin, filtfilt, butter
+from scipy.signal import hilbert, firwin, filtfilt, butter, resample
 from scipy.fft import fft, fftfreq
 from scipy.interpolate import interp1d
 
@@ -638,6 +638,11 @@ class Data: # Signal processing
         reg = LinearRegression().fit(ref_sig().reshape(-1, 1), self())
         prediction = reg.coef_[0]*ref_sig() + reg.intercept_
         return self._clone(self() - prediction, ('Regressed with reference', ref_sig()))
+    
+    def resample(self, new_sr, *args, **kwargs):
+        """args and kwargs will be passed to scipy.signal.resample"""
+        proc_sig = resample(self._sig, round(len(self)*new_sr/self.sr), axis=self.axis, *args, **kwargs)
+        return self.__class__(proc_sig, sr=new_sr, axis=self.axis, history=self._history+[('resample', new_sr)], t0=self._t0)
         
 
 class Event(Interval):
