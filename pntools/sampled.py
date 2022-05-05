@@ -349,14 +349,16 @@ class Data: # Signal processing
     
     def __call__(self, col=None):
         """Return either a specific column or the entire set 2D signal"""
-        if col is not None:
-            if isinstance(col, str): # supply an empty string to take advantage of easy plotting
-                return self.t, self._sig
-            assert isinstance(col, int) and col < len(self)
-            slc = [slice(None)]*self._sig.ndim
-            slc[(self.axis+1)%self._sig.ndim] = col
-            return self._sig[tuple(slc)] # not converting slc to tuple threw a FutureWarning
-        return self._sig
+        if col is None:
+            return self._sig
+
+        if isinstance(col, str): # supply an empty string to take advantage of easy plotting
+            return self.t, self._sig
+
+        assert isinstance(col, int) and col < len(self)
+        slc = [slice(None)]*self._sig.ndim
+        slc[(self.axis+1)%self._sig.ndim] = col
+        return self._sig[tuple(slc)] # not converting slc to tuple threw a FutureWarning
 
     def _clone(self, proc_sig, his_append=None):
         if his_append is None:
@@ -717,9 +719,14 @@ class RunningWin:
         return self.n_win
 
 
+class DataSegments(Data):
+    """2D-data where each piece is along a parent timeline"""
+
 class Siglets:
     """A collection of pieces of signals to do event-triggered analyses"""
-    def __init__(self, sig:Data, events:Events, window=None):
+    AX_TIME, AX_TRIALS = 0, 1
+
+    def __init__(self, sig:Data, events:Events, window=None, cache=None):
         self.parent = sig
         if window is not None: # use window when all events are of the same length
             if isinstance(window, Interval):
@@ -731,27 +738,54 @@ class Siglets:
             events = Events([Event(window + ev_time) for ev_time in events])
         self.window = window
         self.events = events
+        assert self.is_uniform()
     
+    def _parse_ax(self, axis):
+        if isinstance(axis, int):
+            return axis
+        assert isinstance(axis, str)
+        if axis in ('t', 'time'):
+            return self.AX_TIME
+        return self.AX_TRIALS # axis is anything, but ideally in ('ev', 'events', 'sig', 'signals', 'data', 'trials')
+
     @property
     def sr(self):
         return self.parent.sr
     
-    def __call__(self, func=None):
-        siglet_list = [self.parent[ev]() for ev in self.events]
-        if func is None:
-            return np.asarray(siglet_list)
-        return self.apply(func)
+    @property
+    def t(self):
+        """Return the time vector of the event window"""
+        return self.window.t
     
+    @property
     def n(self):
         """Return the number of siglets"""
         return len(self.events)
-
-    def apply(self, func): # returns a numpy array
-        return func(self(), axis=0)
     
-    # def mean(self):
-    #     assert self.is_uniform()
-    #     return Data()
+    def __len__(self):
+        """Number of time points"""
+        return len(self.window)
+
+    def __call__(self, func=None, axis='events', *args, **kwargs):
+        siglet_list = [self.parent[ev]() for ev in self.events]
+        if func is None:
+            return np.asarray(siglet_list).T
+        return self.apply(func, axis=self._parse_ax(axis), *args, **kwargs)
+
+    def apply_along_events(self, func, *args, **kwargs) -> np.ndarray:
+        return func(self(), axis=self.AX_TRIALS, *args, **kwargs)
+    
+    def apply_along_time(self, func, *args, **kwargs) -> np.ndarray:
+        return func(self(), axis=self.AX_TIME, *args, **kwargs)
+    
+    def apply(self, func, axis='events', *args, **kwargs) -> np.ndarray: # by default, applies to each siglet
+        return func(self(), axis=self._parse_ax(axis), *args, **kwargs)
+    
+    def mean(self, axis='events') -> np.ndarray:
+        return self(np.mean, axis=axis)
+    
+    def sem(self, axis='events') -> np.ndarray:
+        return self(np.std, axis=axis)/np.sqrt(self.n)
     
     def is_uniform(self):
         return (len(set([ev.dur_sample for ev in self.events])) == 1) # if all events are of the same size
