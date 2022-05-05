@@ -735,19 +735,23 @@ class Siglets:
     @property
     def sr(self):
         return self.parent.sr
-
+    
     def __call__(self, func=None):
         siglet_list = [self.parent[ev]() for ev in self.events]
         if func is None:
             return np.asarray(siglet_list)
         return self.apply(func)
     
+    def n(self):
+        """Return the number of siglets"""
+        return len(self.events)
+
     def apply(self, func): # returns a numpy array
         return func(self(), axis=0)
     
-    def mean(self):
-        assert self.is_uniform()
-        return Data()
+    # def mean(self):
+    #     assert self.is_uniform()
+    #     return Data()
     
     def is_uniform(self):
         return (len(set([ev.dur_sample for ev in self.events])) == 1) # if all events are of the same size
