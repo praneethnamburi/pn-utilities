@@ -2,38 +2,32 @@
 Tools for working with videos
 """
 import os
+import re
 import subprocess
 import urllib
 import time
-from datetime import timedelta
+from pathlib import Path
 
-import matplotlib as mpl
-from matplotlib import pyplot as plt
-from decord import VideoReader
 import ffmpeg
 from pytube import YouTube
 
 CLIP_FOLDER = 'C:\\data\\_clipcollection'
 
-class ParseAx:
-    def __init__(self, ax=None) -> None:
-        if ax is None:
-            self._fig, self._ax = plt.subplots()
-        else:
-            import matplotlib.axes as maxes
-            assert isinstance(ax, (maxes.Axes, plt.Figure))
-            if isinstance(ax, plt.Figure):
-                self._fig = ax
-                if not self._fig.axes:
-                    self._ax = self._fig.subplots(1, 1)
-                else:
-                    # find an empty axis
-                    for this_ax in self._fig.axes:
-                        # if axis does not have images, lines, or scatter plots
-                        if not any((bool(this_ax.get_images()), bool(this_ax.lines), bool(this_ax.collections))):
-                            break
-                    self._ax = this_ax
-    
+
+def detect_black_frames(vid_file):
+    """Detect black frames in a video file using ffmpeg.
+
+    Returns a dictionary with lists of start times, end times, duration, and the file name that was given as input
+    """
+    assert os.path.exists(vid_file)
+    def find_float(str, pre):
+        return float(re.search(f'(?<={pre})[.\\d]+', str).group(0))
+    bd = subprocess.getoutput(f'ffmpeg -i "{vid_file}" -vf blackdetect=d=0:pix_th=.01 -f rawvideo -y /NUL')
+    blackframe_segments = [b for b in bd.splitlines() if 'blackdetect' in b]
+    start = [find_float(seg, 'black_start:') for seg in blackframe_segments]
+    end = [find_float(seg, 'black_end:') for seg in blackframe_segments]
+    duration = [find_float(seg, 'black_duration:') for seg in blackframe_segments]
+    return {'start': start, 'end': end, 'duration': duration, 'fname': vid_file}
 
 def download(url, start_time=None, end_time=None, dur=None, full_file=False):
     """
