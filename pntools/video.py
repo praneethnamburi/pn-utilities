@@ -1,5 +1,7 @@
 """
-Tools for working with videos
+Tools for working with videos. It contains some wrappers that call ffmpeg for processing videos.
+
+Use the gui module for browsing videos.
 """
 import os
 import re
@@ -28,6 +30,39 @@ def detect_black_frames(vid_file):
     end = [find_float(seg, 'black_end:') for seg in blackframe_segments]
     duration = [find_float(seg, 'black_duration:') for seg in blackframe_segments]
     return {'start': start, 'end': end, 'duration': duration, 'fname': vid_file}
+
+def make_montage2x2(vid_files, vid_output=None, aud_file=None, overwrite=False):
+    """
+    Create a 2x2 montage with 4 video files using ffmpeg xstack
+    
+    Inputs:
+        vid_files - list/tuple of 4 video file names
+        vid_output (optional) - name of the output file
+        aud_file (optional) - full path to the audio file
+
+    Returns:
+        Output from ffmpeg
+    """
+    assert len(vid_files) == 4
+    vid_inputs = '" -i "'.join([''] + vid_files).removeprefix('" ') + '"'
+    if vid_output is None:
+        v0 = Path(vid_files[0])
+        pre = str(v0.stem)
+        vid_output = f'{os.path.join(v0.parent, pre)}-montage.mp4'
+    aud_input_str = '' 
+    aud_input = '0' # get audio from the first file if there is no audio
+    aud_codec_str = ''
+    if aud_file is not None:
+        assert os.path.exists(aud_file)
+        aud_input_str = f' -i "{aud_file}"'
+        aud_input = '4'
+        aud_codec_str = ' -c:a aac'
+
+    ret = ''
+    if (not os.path.exists(vid_output)) or overwrite:
+        this_cmd = f'ffmpeg -y {vid_inputs}{aud_input_str} -filter_complex "[0:v][1:v][2:v][3:v]xstack=inputs=4:layout=0_0|w0_0|0_h0|w0_h0[v]" -map "[v]" -map {aud_input}:a -c:v h264_nvenc{aud_codec_str} "{vid_output}"'
+        ret = subprocess.getoutput(this_cmd)
+    return ret
 
 def download(url, start_time=None, end_time=None, dur=None, full_file=False):
     """
