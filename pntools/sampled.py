@@ -791,7 +791,7 @@ class Siglets:
         return (len(set([ev.dur_sample for ev in self.events])) == 1) # if all events are of the same size
 
 
-def interpnan(sig, maxgap=None, **kwargs):
+def interpnan(sig, maxgap=None, min_data_frac=0.2, **kwargs):
     """
     Interpolate NaNs in a 1D signal
         sig - 1D numpy array
@@ -804,6 +804,7 @@ def interpnan(sig, maxgap=None, **kwargs):
             commonly used: kind='cubic'
     """
     assert np.ndim(sig) == 1
+    assert 0. <= min_data_frac <= 1.
     if 'fill_value' not in kwargs:
         kwargs['fill_value'] = 'extrapolate'
         
@@ -811,6 +812,9 @@ def interpnan(sig, maxgap=None, **kwargs):
         return np.isnan(y), lambda z: z.nonzero()[0]
     proc_sig = sig.copy()
     nans, x = nan_helper(proc_sig)
+    if np.mean(~nans) < min_data_frac:
+        return sig # interpolate only if there are enough data points
+
     if maxgap is None:
         mask = np.ones_like(nans)
     elif isinstance(maxgap, int):
