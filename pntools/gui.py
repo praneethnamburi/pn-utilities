@@ -245,7 +245,7 @@ class GenericBrowser:
         self._current_idx = 0
 
         # tracking variable memory slots
-        self._idx_memory_slots = {str(k):None for k in range(1, 10)}
+        self._idx_memory_slots = self.initialize_memory_slots()
         self._memtext = None
         self._keybindingtext = None
         self.buttons = Buttons(parent=self)
@@ -314,6 +314,30 @@ class GenericBrowser:
         else:
             self._current_idx = self._idx_memory_slots[key]
             self.update()
+
+    @staticmethod
+    def initialize_memory_slots():
+        return {str(k):None for k in range(1, 10)}
+
+    def disable_memory_slots(self):
+        self._idx_memory_slots = {}
+    
+    def enable_memory_slots(self):
+        self._idx_memory_slots = self.initialize_memory_slots()
+
+    def show_memory_slots(self, pos='bottom left'):
+        self._memtext = TextView(self._idx_memory_slots, fax=self.figure, pos=pos)
+    
+    def update_memory_slot_display(self):
+        """Refresh memory slot text if it is not hidden"""
+        if self._memtext is not None:
+            self._memtext.update(self._idx_memory_slots)
+
+    def hide_memory_slots(self):
+        """Hide the memory slot text"""
+        if self._memtext is not None:
+            self._memtext._text.remove()
+        self._memtext = None
 
     def reset_axes(self, event=None): # event in case it is used as a callback function
         """Reframe data within matplotlib axes."""
@@ -384,20 +408,6 @@ class GenericBrowser:
         self.figure.savefig(buf)
         QClipboard().setImage(QImage.fromData(buf.getvalue()))
         buf.close()
-    
-    def show_memory_slots(self, pos='bottom left'):
-        self._memtext = TextView(self._idx_memory_slots, fax=self.figure, pos=pos)
-    
-    def update_memory_slot_display(self):
-        """Refresh memory slot text if it is not hidden"""
-        if self._memtext is not None:
-            self._memtext.update(self._idx_memory_slots)
-
-    def hide_memory_slots(self):
-        """Hide the memory slot text"""
-        if self._memtext is not None:
-            self._memtext._text.remove()
-        self._memtext = None
 
     def show_key_bindings(self, f=None, pos='bottom right'):
         f = {None: self.figure, 'new': plt.figure()}[f]
@@ -542,7 +552,7 @@ class SignalBrowser(GenericBrowser):
         self.data = plot_data
         if titlefunc is None:
             if hasattr(self.data[0], 'name'):
-                self.titlefunc=lambda s: f'{s.plot_data[s._current_idx].name}'
+                self.titlefunc=lambda s: f'{s.data[s._current_idx].name}'
             else:
                 self.titlefunc = lambda s: f'Plot number {s._current_idx}'
         else:

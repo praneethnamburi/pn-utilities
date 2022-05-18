@@ -88,8 +88,8 @@ class Time:
     @time.setter
     def time(self, s_val):
         """If time is changed, then the sample number should be reset as well"""
-        self._time = float(s_val)
-        self._sample = int(self._time*self._sr)
+        self._sample = int(float(s_val)*self._sr)
+        self._time = float(self._sample)/self._sr
 
     def __add__(self, other):
         x = self._arithmetic(other)
