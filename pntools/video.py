@@ -16,6 +16,24 @@ from pytube import YouTube
 CLIP_FOLDER = 'C:\\data\\_clipcollection'
 
 
+def probe(vid_file):
+    """return the output of ffprobe"""
+    assert os.path.exists(vid_file)
+    return subprocess.getoutput(f'ffprobe -hide_banner -show_entries stream=duration "{vid_file}"')
+
+def get_sr(vid_file):
+    """Parse ffprobe output to get sampling rate of a video"""
+    x = probe(vid_file)
+    try:
+        sr = round(float(re.search('fps, (.+?) tbr,', x).group(1)))
+    except AttributeError:
+        sr = None
+    return sr
+
+def get_dur(vid_file):
+    """Parse ffprobe output to get the duration of a video file"""
+    return float(probe(vid_file).split('[STREAM]')[-1].split('[/STREAM]')[0].split('duration=')[-1].rstrip('\n'))
+
 def detect_black_frames(vid_file):
     """Detect black frames in a video file using ffmpeg.
 
@@ -30,6 +48,16 @@ def detect_black_frames(vid_file):
     end = [find_float(seg, 'black_end:') for seg in blackframe_segments]
     duration = [find_float(seg, 'black_duration:') for seg in blackframe_segments]
     return {'start': start, 'end': end, 'duration': duration, 'fname': vid_file}
+
+def interp_black_frames(vid_file, vid_output=None, overwrite=False):
+    """Interpolate black frames in a video"""
+    if vid_output is None:
+        vid_output = os.path.join(Path(vid_file).parent, f'{Path(vid_file).stem} bfinterp{Path(vid_file).suffix}')
+    if (not os.path.exists(vid_output)) or overwrite:
+        vid_sr = get_sr(vid_file)
+        this_cmd = f'ffmpeg -y -i "{vid_file}" -vf blackframe=0,metadata=select:key=lavfi.blackframe.pblack:value=50:function=less,framerate=fps={vid_sr} -c:v h264_nvenc "{vid_output}"'
+        return subprocess.getoutput(this_cmd)
+    return "Did not interpolate."
 
 def make_montage2x2(vid_files, vid_output=None, aud_file=None, overwrite=False):
     """

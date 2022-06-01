@@ -631,6 +631,8 @@ class FileManager:
                 for exc_str in exclude:
                     assert isinstance(exc_str, str)
                     self._exclude(type_name, exc_str)
+        
+        return self # for chaining commands
 
     def _include(self, type_name, inclusion_string):
         """
