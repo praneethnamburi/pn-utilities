@@ -1148,7 +1148,27 @@ class nameidlist(namelist):
         return {x.id:x for x in self.data}[key]
 
 
+def find_nearest(x, y):
+    """
+    Find the nearest x-values for every value in y.
+    x and y are expected to be lists of floats.
+    Returns:
+        List with the same number of values as y, but each value is the closest value in x.
+    """
+    x = np.asarray(x)
+    y = np.asarray(y)
+    return [x[np.argmin(np.abs(x - yi))] for yi in y]
+
+
 ## matplotlib-specific stuff
+def ticks_from_times(times, tick_lim):
+    """Generate x, y arrays to supply to plt.plot function to plot a set of x-values (times) as ticks."""
+    def nan_pad_x(inp):
+            return [item for x in inp for item in (x, x, np.nan)]
+    def nan_pad_y(ylim, n):
+        return [item for y1, y2 in [ylim]*n for item in (y1, y2, np.nan)]
+    return nan_pad_x(times), nan_pad_y(tick_lim, len(times))
+
 if not BLENDER_MODE:
     import matplotlib as mpl
     mpl.rcParams['lines.linewidth'] = 0.75
