@@ -463,7 +463,7 @@ class PlotBrowser(GenericBrowser):
     and update functions) that parses each of the elements in the array.
     Assumes that the plotting function is going to make one figure.
     """
-    def __init__(self, plot_data, plot_func, figure_handle=None, reset_axes_on_update=False, **plot_kwargs):
+    def __init__(self, plot_data, plot_func, figure_handle=None, **plot_kwargs):
         """
             plot_data - list of data objects to browse
 
@@ -482,8 +482,6 @@ class PlotBrowser(GenericBrowser):
             
             figure_handle - (default: None) matplotlib figure handle within which to instantiate the browser
                 Ideally, the setup function will handle this
-            
-            reset_axes_on_update (bool) - (default: False)
 
             plot_kwargs - these keyword arguments will be passed to plot_function after data and figure
         """
@@ -500,7 +498,6 @@ class PlotBrowser(GenericBrowser):
             self.plot_handles = None
             figure_handle = figure_handle
 
-        self.reset_axes_on_update = reset_axes_on_update
         # setup
         super().__init__(figure_handle)
 
@@ -539,7 +536,7 @@ class SignalBrowser(GenericBrowser):
     """
     Browse an array of pntools.Sampled.Data elements, or 2D arrays
     """
-    def __init__(self, plot_data, titlefunc=None, figure_handle=None):
+    def __init__(self, plot_data, titlefunc=None, figure_handle=None, reset_on_change=False):
         super().__init__(figure_handle)
 
         self._ax = self.figure.subplots(1, 1)
@@ -558,18 +555,22 @@ class SignalBrowser(GenericBrowser):
         else:
             self.titlefunc = titlefunc
 
+        self.reset_on_change = reset_on_change
         # initialize
         self.set_default_keybindings()
+        self.buttons.add(text='Auto limits', type_='Toggle', action_func=self.update, start_state=False)
         plt.show(block=False)
         self.update()
     
-    def update(self):
+    def update(self, event=None):
         this_data = self.data[self._current_idx]
         if isinstance(this_data, sampled.Data):
             self._plot.set_data(this_data.t, this_data())
         else:
             self._plot.set_ydata()
         self._ax.set_title(self.titlefunc(self))
+        if self.buttons['Auto limits'].state: # is True
+            self.reset_axes()
         plt.draw()
 
 

@@ -845,7 +845,7 @@ def onoff_samples(tfsig):
     if tfsig[0]: # is True
         onset_samples = [0] + onset_samples
     if tfsig[-1]:
-        offset_samples = offset_samples + [len(tfsig)]
+        offset_samples = offset_samples + [len(tfsig)-1]
     return onset_samples, offset_samples
 
 def uniform_resample(time, sig, sr, t_min=None, t_max=None):
