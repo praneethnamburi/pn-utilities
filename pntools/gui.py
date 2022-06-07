@@ -82,12 +82,17 @@ class ToggleButton(StateButton):
         self.on_clicked(self.toggle)
         self.set_text()
     
+    def set_text(self):
+        self.label._text = f'{self.name}={self.state}'
+
     def toggle(self, event=None):
         self.state = not self.state
         self.set_text()
     
-    def set_text(self):
-        self.label._text = f'{self.name}={self.state}'
+    def set_state(self, state:bool):
+        assert isinstance(state, bool)
+        self.state = state
+        self.set_text()
 
 
 class Selector:
