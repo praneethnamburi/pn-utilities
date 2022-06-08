@@ -18,7 +18,6 @@ from datetime import timedelta
 import ffmpeg
 import numpy as np
 import matplotlib as mpl
-from PySide2.QtGui import QClipboard, QImage
 from matplotlib import pyplot as plt
 from matplotlib import axes as maxes
 from matplotlib import lines as mlines
@@ -409,6 +408,7 @@ class GenericBrowser:
         self.update()
     
     def copy_to_clipboard(self):
+        from PySide2.QtGui import QClipboard, QImage
         buf = io.BytesIO()
         self.figure.savefig(buf)
         QClipboard().setImage(QImage.fromData(buf.getvalue()))
