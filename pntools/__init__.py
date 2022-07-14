@@ -1160,6 +1160,13 @@ def find_nearest(x, y):
     return [x[np.argmin(np.abs(x - yi))] for yi in y]
 
 
+## Simple operations
+def split_filename(fname:str) -> tuple:
+    name, ext = os.path.splitext(os.path.basename(fname))
+    path = os.path.dirname(fname)
+    return path, name, ext
+
+
 ## matplotlib-specific stuff
 def ticks_from_times(times, tick_lim):
     """Generate x, y arrays to supply to plt.plot function to plot a set of x-values (times) as ticks."""
