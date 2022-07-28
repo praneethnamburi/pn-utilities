@@ -325,10 +325,11 @@ class Interval:
 
 
 class Data: # Signal processing
-    def __init__(self, sig, sr, axis=None, history=None, t0=0.):
+    def __init__(self, sig, sr, axis=None, history=None, t0=0., properties:dict=None):
         """
         axis (int) time axis
         t0 (float) time at start sample
+        properties (dict) additional properties to write into the object (e.g. name)
         NOTE: When inheriting from this class, if the parameters of the
         __init__ method change, then make sure to rewrite the _clone method
         """
@@ -346,6 +347,9 @@ class Data: # Signal processing
             assert isinstance(history, list)
             self._history = history
         self._t0 = t0
+        if properties is not None:
+            for k, v in properties.items():
+                setattr(self, k, v)
     
     def __call__(self, col=None):
         """Return either a specific column or the entire set 2D signal"""
