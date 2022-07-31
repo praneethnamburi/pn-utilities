@@ -1147,6 +1147,15 @@ class nameidlist(namelist):
             return
         return {x.id:x for x in self.data}[key]
 
+def flip_nested_dict(data:dict) -> dict:
+    """Flip the hierarchy in a nested dictionary"""
+    flipped = {}
+    for key, val in data.items():
+        for subkey, subval in val.items():
+            if subkey not in flipped:
+                flipped[subkey] = {}
+            flipped[subkey][key] = subval
+    return flipped
 
 def find_nearest(x, y):
     """
