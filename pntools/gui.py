@@ -497,7 +497,13 @@ class PlotBrowser(GenericBrowser):
             assert len(plot_func) == 2
             self.setup_func, self.plot_func = plot_func            
             self.plot_handles = self.setup_func(self.data[0], **self.plot_kwargs)
-            figure_handle = list(self.plot_handles.values())[0].figure # figure_handle passed as input will be ignored
+            plot_handle = list(self.plot_handles.values())[0]
+            if 'figure' in self.plot_handles:
+                figure_handle = self.plot_handles['figure']
+            elif isinstance(plot_handle, list):
+                figure_handle = plot_handle[0].figure
+            else:
+                figure_handle = plot_handle.figure # figure_handle passed as input will be ignored
         else:
             self.setup_func, self.plot_func = None, plot_func
             self.plot_handles = None
@@ -514,8 +520,11 @@ class PlotBrowser(GenericBrowser):
         self.reset_axes()
         plt.show(block=False)
         # add selectors after drawing!
-        s0 = self.selectors.add(list(self.plot_handles.values())[0])
-        self.buttons.add(text='Selector 0', type_='Toggle', action_func=s0.toggle, start_state=s0.is_active)
+        try:
+            s0 = self.selectors.add(list(self.plot_handles.values())[0])
+            self.buttons.add(text='Selector 0', type_='Toggle', action_func=s0.toggle, start_state=s0.is_active)
+        except AssertionError:
+            print('Unable to add selectors')
 
     def get_current_data(self):
         return self.data[self._current_idx]
