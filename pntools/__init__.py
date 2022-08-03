@@ -1176,6 +1176,19 @@ def split_filename(fname:str) -> tuple:
     return path, name, ext
 
 
+## Statistics
+def p_str(p_val, sep=''):
+    """
+    Convert p-value to a string to be used in plots
+    sep is a separator between stars and p_value
+    e.g. p_str(0.02) -> '*p=0.02'
+    """
+    if np.isnan(p_val):
+        return ''
+    def p_star(p_val):
+        return [ps for ps, sel in zip(('n.s. ', '*', '**', '***'), (0.05<=p_val<=1., 0.01<=p_val<0.05, 0.001<=p_val<0.01, p_val<0.001)) if sel][0]
+    return f'{p_star(p_val)}{sep}p={p_val:.2g}'
+
 ## matplotlib-specific stuff
 def ticks_from_times(times, tick_lim):
     """Generate x, y arrays to supply to plt.plot function to plot a set of x-values (times) as ticks."""
