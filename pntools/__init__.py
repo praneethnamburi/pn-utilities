@@ -1200,9 +1200,47 @@ def ticks_from_times(times, tick_lim):
 
 if not BLENDER_MODE:
     import matplotlib as mpl
+    import matplotlib.pyplot as plt
     mpl.rcParams['lines.linewidth'] = 0.75
     def format_legend(ax):
         """Set the legend labels using 'label' field in plot."""
         box = ax.get_position()
         ax.set_position([box.x0, box.y0, box.width*0.8, box.height])
         ax.legend(loc='center left', bbox_to_anchor=(1, 0.5))
+
+    def scatter_bar(x, y, ax=None, yl=None, xcat=None, **kwargs):
+        """Make a scatter plot with bars"""
+        color_scatter = kwargs.get('color_scatter', 'dodgerblue')
+        color_bar = kwargs.get('color_bar', 'darkblue')
+        if xcat is None:
+            x = np.asarray(x)
+            y = np.asarray(y)
+            xcat = np.unique(x[~np.isnan(x)])
+        else:
+            x, y = list(zip(*[(this_x, this_y) for this_x, this_y in zip(x, y) if this_x in xcat]))
+            x = np.asarray(x)
+            y = np.asarray(y)
+
+        if ax is None:
+            _, ax = plt.subplots()
+            plt_show = True
+        else:
+            plt_show = False
+        
+        ax.scatter(x, y, s=80, color=color_scatter, facecolors='none')
+        if yl is None:
+            yl = ax.get_ylim()
+        else:
+            ax.set_ylim(yl)
+        x_mul = np.diff(ax.get_xlim())
+        for this_x in xcat:
+            this_y = y[x==this_x]
+            mu = np.nanmean(this_y)
+            n = np.sum(~np.isnan(this_y))
+            sem = np.nanstd(this_y)/np.sqrt(n)
+            ax.plot([this_x-0.05*x_mul, this_x-0.05*x_mul, this_x+0.05*x_mul, this_x+0.05*x_mul], [yl[0], mu, mu, yl[0]], color=color_bar, linewidth=1.2)
+            ax.plot([this_x, this_x], [mu, mu+sem], color=color_bar, linewidth=1.2)
+            ax.plot([this_x-0.02*x_mul, this_x+0.02*x_mul], [mu+sem, mu+sem], color=color_bar, linewidth=1.2)
+        if plt_show:
+            plt.show(block=False)
+        return ax
