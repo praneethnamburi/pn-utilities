@@ -1241,6 +1241,7 @@ if not BLENDER_MODE:
             ax.plot([this_x-0.05*x_mul, this_x-0.05*x_mul, this_x+0.05*x_mul, this_x+0.05*x_mul], [yl[0], mu, mu, yl[0]], color=color_bar, linewidth=1.2)
             ax.plot([this_x, this_x], [mu, mu+sem], color=color_bar, linewidth=1.2)
             ax.plot([this_x-0.02*x_mul, this_x+0.02*x_mul], [mu+sem, mu+sem], color=color_bar, linewidth=1.2)
+        ax.set_xticks(xcat, xcat)
         if plt_show:
             plt.show(block=False)
         return ax
