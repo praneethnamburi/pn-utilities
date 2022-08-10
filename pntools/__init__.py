@@ -1201,6 +1201,7 @@ def ticks_from_times(times, tick_lim):
 if not BLENDER_MODE:
     import matplotlib as mpl
     import matplotlib.pyplot as plt
+    from scipy import stats as sstats
     mpl.rcParams['lines.linewidth'] = 0.75
     def format_legend(ax):
         """Set the legend labels using 'label' field in plot."""
@@ -1242,6 +1243,55 @@ if not BLENDER_MODE:
             ax.plot([this_x, this_x], [mu, mu+sem], color=color_bar, linewidth=1.2)
             ax.plot([this_x-0.02*x_mul, this_x+0.02*x_mul], [mu+sem, mu+sem], color=color_bar, linewidth=1.2)
         ax.set_xticks(xcat, xcat)
+        if plt_show:
+            plt.show(block=False)
+        return ax
+
+    def scatter_bar_cols(col_data, col_names, ax=None, yl=None, **kwargs):
+        """
+        Plot column data  (like in prism).
+        col_data  - (list of lists of floats) nan values are excluded before plotting and doing statistics
+        col_names - (tuple of strings) column names
+        kwargs - 
+            size        - (2-tuple) figure size in inches, default (3.75, 6)
+            x_buffer    - (float) gap to the left and right of the bars, default 0.5
+            show_stats  - (bool) show p-value in the bar graph, only relevant if there are two bars, default True
+            show_n      - (bool) show n-values at the bottom of the bars, default True
+        """
+        assert len(col_data) == len(col_names)
+        for col_count, this_col_data in enumerate(col_data):
+            this_col_data = np.asarray(this_col_data)
+            this_col_data = this_col_data[~np.isnan(this_col_data)]
+            col_data[col_count] = list(this_col_data)
+        x = []
+        y = []
+        for col_num in range(len(col_names)):
+            y += col_data[col_num]
+            x += [col_num]*len(col_data[col_num])
+        xcat = np.unique(np.array(x)[~np.isnan(x)])
+
+        if ax is None:
+            f, ax = plt.subplots()
+            plt_show = True
+        else:
+            plt_show = False
+        f.set_size_inches(*kwargs.get('size', (3.75, 6)))
+        
+        x_buffer = (xcat[-1] - xcat[0])*kwargs.get('x_buffer', 0.5)
+        ax.set_xlim(xcat[0]-x_buffer, xcat[-1]+x_buffer)
+        ax = scatter_bar(x, y, xcat=xcat, ax=ax, yl=yl, **kwargs)
+        if kwargs.get('show_n', True):
+            n_str = lambda col_data : f'(n={len(col_data)})'
+        else:
+            n_str = lambda _ : ''
+        ax.set_xticks(xcat, [x+'\n'+n_str(col_data) for x, col_data in zip(col_names, col_data)])
+        if len(col_names) == 2 and kwargs.get('show_stats', True):
+            _, p_val = sstats.ttest_ind(col_data[0], col_data[1])
+            ax.text(0.5, 0.94, p_str(p_val), transform=ax.transAxes, ha='center', va='bottom')
+            yl = ax.get_ylim()
+            yc = yl[0] + np.diff(yl)*0.93
+            ax.plot(xcat, [yc]*2, color='black', linewidth=1.5)
+        f.tight_layout()
         if plt_show:
             plt.show(block=False)
         return ax
