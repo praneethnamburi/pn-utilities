@@ -475,6 +475,14 @@ class Data: # Signal processing
         ret._t0 = self._t0 - time
         return ret
     
+    def get_total_left_shift(self) -> float:
+        """Return the total amount of time by which the signal was shifted to the left."""
+        l_shift = [x[1] for x in self._history if x[0] == 'shift_left']
+        return float(sum(l_shift))
+
+    def reset_left_shift(self):
+        return self.shift_left(-self.get_total_left_shift())
+
     def scale(self, scale_factor):
         return self._clone(self._sig/scale_factor, ('scale', scale_factor))
         
