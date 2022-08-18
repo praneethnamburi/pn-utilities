@@ -92,6 +92,48 @@ def make_montage2x2(vid_files, vid_output=None, aud_file=None, overwrite=False):
         ret = subprocess.getoutput(this_cmd)
     return ret
 
+def reencode(vid_files, out_files=None, preset='plain', overwrite=False):
+    """
+    preset - 
+        'plain' - (default) simply re-encodes with h264_nvenc code with default ffmpeg presets
+        'color' - settings that were being used for re-encoding optitrack prime color cameras
+        'reference' - settings that were being used for re-encoding optitrack reference videos (black and white)
+        'ffpreset' - preset is set to this value when using one of ffmpeg's default presets - 'default', 'slow', 'medium', 'fast', 'hp', 'hq', 'bd', 'll', 'llhq', 'llhp', 'lossless', 'losslesshp'
+    """
+    if preset in ('default', 'slow', 'medium', 'fast', 'hp', 'hq', 'bd', 'll', 'llhq', 'llhp', 'lossless', 'losslesshp'):
+        ffpreset = preset
+        preset = 'ffpreset'
+    known_presets = ('plain', 'color', 'reference', 'quality', 'ffpreset')
+    assert preset in known_presets # reference -> b&w motion capture reference
+    if isinstance(vid_files, str):
+        vid_files = [vid_files]
+    
+    if out_files is None:
+        out_files = []
+        for vid_file in vid_files:
+            vf = Path(vid_file)
+            out_files.append(f'{vf.parent / vf.stem}{"_reencode" if vf.suffix==".mp4" else ""}.mp4')
+
+    if isinstance(out_files, str):
+        out_files = [out_files]
+    
+    ret = []
+    for vid_file, out_file in zip(vid_files, out_files):
+        cmd_pre = f'ffmpeg -{"y" if overwrite else "n"} -i "{vid_file}"'
+        cmd_post = f'"{out_file}"'
+        if preset == 'plain':
+            cmd = f'{cmd_pre} -c:v h264_nvenc {cmd_post}'
+        elif preset == 'color':
+            cmd = f'{cmd_pre} -c:v h264_nvenc -vsync vfr -b:v 12M -an {cmd_post}'
+        elif preset == 'reference':
+            cmd = f'{cmd_pre} -c:v h264_nvenc -vf transpose=1 {cmd_post}'
+        elif preset == 'ffpreset':
+            cmd = f'{cmd_pre} -c:v h264_nvenc -preset {ffpreset} {cmd_post}'
+        else:
+            raise ValueError(f'Unknown preset {preset}')
+        ret.append(subprocess.getoutput(cmd))
+    return ret
+
 def download(url, start_time=None, end_time=None, dur=None, full_file=False):
     """
     Download a clip from a YouTube video.
