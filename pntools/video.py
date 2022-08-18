@@ -98,7 +98,8 @@ def reencode(vid_files, out_files=None, preset='plain', overwrite=False):
         'plain' - (default) simply re-encodes with h264_nvenc code with default ffmpeg presets
         'color' - settings that were being used for re-encoding optitrack prime color cameras
         'reference' - settings that were being used for re-encoding optitrack reference videos (black and white)
-        'ffpreset' - preset is set to this value when using one of ffmpeg's default presets - 'default', 'slow', 'medium', 'fast', 'hp', 'hq', 'bd', 'll', 'llhq', 'llhp', 'lossless', 'losslesshp'
+        'ffpreset' - preset is set to this value when using one of ffmpeg's default presets 
+            - 'default', 'slow', 'medium', 'fast', 'hp', 'hq', 'bd', 'll', 'llhq', 'llhp', 'lossless', 'losslesshp'
     """
     if preset in ('default', 'slow', 'medium', 'fast', 'hp', 'hq', 'bd', 'll', 'llhq', 'llhp', 'lossless', 'losslesshp'):
         ffpreset = preset
