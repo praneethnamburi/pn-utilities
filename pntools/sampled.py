@@ -464,8 +464,10 @@ class Data: # Signal processing
         proc_sig = np.apply_along_axis(interpnan, self.axis, self._sig, maxgap, **kwargs)
         return self._clone(proc_sig, ('instantaneous_phase', None))
 
-    def shift_baseline(self, offset): 
+    def shift_baseline(self, offset=None): 
         # you can use numpy broadcasting to shift each signal if multi-dimensional
+        if offset is None:
+            offset = np.mean(self._sig, self.axis)
         return self._clone(self._sig - offset, ('shift_baseline', offset))
     
     def shift_left(self, time:float=None):
@@ -657,7 +659,7 @@ class Data: # Signal processing
         """args and kwargs will be passed to scipy.signal.resample"""
         proc_sig = resample(self._sig, round(len(self)*new_sr/self.sr), axis=self.axis, *args, **kwargs)
         return self.__class__(proc_sig, sr=new_sr, axis=self.axis, history=self._history+[('resample', new_sr)], t0=self._t0)
-        
+
 
 class Event(Interval):
     def __init__(self, start, end=None, **kwargs):
@@ -886,3 +888,28 @@ def uniform_resample(time, sig, sr, t_min=None, t_max=None):
     t_proc = np.linspace(t_min, t_max, n_samples)
     sig_proc = np.interp(t_proc, time, sig)
     return Data(sig_proc, sr, t0=t_min)
+
+
+def frac_power(sig:Data, freq_lim:tuple, win_size:float=5., win_inc:float=2.5, freq_dx:float=0.05, highpass_cutoff:float=0.2) -> Data:
+    """
+    Calculate the fraction of power in a specific frequency band (similar to synchronymetric in musicrunning project).
+    """
+    assert len(freq_lim) == 2
+    curr_t = sig.t_start()
+    ret = []
+    while curr_t + win_size < sig.t_end():
+        try:
+            sig_piece = sig[curr_t:curr_t+win_size]
+            if highpass_cutoff > 0:
+                f, amp = sig_piece.shift_baseline().highpass(highpass_cutoff).fft()
+            else:
+                f, amp = sig_piece.shift_baseline().fft()
+            area_of_interest = np.trapz(interp1d(f, amp)(np.r_[freq_lim[0]:freq_lim[1]:freq_dx]), dx=freq_dx)
+            total_area = np.trapz(amp, f)
+            ret.append(area_of_interest / total_area)
+            curr_t = curr_t + win_inc
+        except ValueError:
+            ret.append(np.nan)
+            curr_t = curr_t + win_inc
+    
+    return Data(ret, 1/win_inc, t0=sig.t_start()+win_size/2)
