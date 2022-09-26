@@ -85,10 +85,18 @@ def make_montage2x2(vid_files, vid_output=None, aud_file=None, overwrite=False):
         aud_input_str = f' -i "{aud_file}"'
         aud_input = '4'
         aud_codec_str = ' -c:a aac'
+        aud_map = f"-map {aud_input}:a "
+    else:
+        # no audio file, check if the first video has audio in it
+        ret = subprocess.getoutput(f'ffprobe -i "{vid_files[0]}" -show_streams -select_streams a -loglevel error')
+        if not ret:
+            aud_map = "" # don't add audio if the first video doesn't have an audio stream in it
+        else:
+            aud_map = f"-map {aud_input}:a " # grab the audio from the first video file
 
     ret = ''
     if (not os.path.exists(vid_output)) or overwrite:
-        this_cmd = f'ffmpeg -y {vid_inputs}{aud_input_str} -filter_complex "[0:v][1:v][2:v][3:v]xstack=inputs=4:layout=0_0|w0_0|0_h0|w0_h0[v]" -map "[v]" -map {aud_input}:a -c:v h264_nvenc{aud_codec_str} "{vid_output}"'
+        this_cmd = f'ffmpeg -y {vid_inputs}{aud_input_str} -filter_complex "[0:v][1:v][2:v][3:v]xstack=inputs=4:layout=0_0|w0_0|0_h0|w0_h0[v]" -map "[v]" {aud_map}-c:v h264_nvenc{aud_codec_str} "{vid_output}"'
         ret = subprocess.getoutput(this_cmd)
     return ret
 
