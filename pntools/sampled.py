@@ -47,9 +47,9 @@ class Time:
         assert isinstance(inp, (str, float, int))
         if isinstance(inp, str):
             inp = [int(x) for x in inp.split(';')]
-            self._sample = int((inp[0]*60*60 + inp[1]*60 + inp[2])*self.sr + inp[3])
+            self._sample = round((inp[0]*60*60 + inp[1]*60 + inp[2])*self.sr + inp[3])
         if isinstance(inp, float): # time to sample
-            self._sample = int(inp*self.sr)
+            self._sample = round(inp*self.sr)
         if isinstance(inp, int):
             self._sample = inp
         
