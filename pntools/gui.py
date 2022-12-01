@@ -24,7 +24,6 @@ from matplotlib import lines as mlines
 from matplotlib.widgets import Button as ButtonWidget
 from matplotlib.widgets import LassoSelector as LassoSelectorWidget
 from matplotlib.path import Path
-from decord import VideoReader
 
 from pntools import sampled
 
@@ -591,6 +590,7 @@ class SignalBrowser(GenericBrowser):
 class VideoBrowser(GenericBrowser):
     """Scroll through images of a video"""
     def __init__(self, vid_name, titlefunc=None, figure_handle=None):
+        from decord import VideoReader
         super().__init__(figure_handle)
 
         if not os.path.exists(vid_name): # try looking in the CLIP FOLDER
