@@ -6,6 +6,7 @@ Classes:
     SignalBrowser - Browse an array of pntools.Sampled.Data elements, or 2D arrays
     PlotBrowser - Scroll through an array of complex data where a plotting function is defined for each element
     VideoBrowser - Scroll through images of a video
+    VideoPlotBrowser - Browse through video and 1D signals synced to the video side by side
 
     Future:
         Extend VideoBrowser to play, pause and extract clips using hotkeys. Show timeline in VideoBrowser.
@@ -24,6 +25,7 @@ from matplotlib import lines as mlines
 from matplotlib.widgets import Button as ButtonWidget
 from matplotlib.widgets import LassoSelector as LassoSelectorWidget
 from matplotlib.path import Path
+from matplotlib.gridspec import GridSpec
 
 from pntools import sampled
 
@@ -638,6 +640,78 @@ class VideoBrowser(GenericBrowser):
             fname_out = os.path.join(CLIP_FOLDER, os.path.splitext(self.name)[0] + '_s{:.3f}_e{:.3f}.mp4'.format(start_time, end_time))
         ffmpeg.input(self.fname, ss=start_time).output(fname_out, vcodec='h264_nvenc', t=dur, r=out_rate).run()
         return fname_out
+
+
+class VideoPlotBrowser(GenericBrowser):
+    def __init__(self, vid_name:str, signals:dict, titlefunc=None, figure_handle=None):
+        """
+        Browse a video and an array of sampled.Data side by side. 
+        Assuming that the time vectors are synchronized across the video and the signals, there will be a black tick at the video frame being viewed.
+        Originally created to browse montage videos from optitrack alongside physiological signals from delsys. 
+        For example, see projects.fencing.snapshots.browse_trial
+
+        signals is a {signal_name<str> : signal<pntools.sampled.Data>}
+        """
+        from decord import VideoReader
+        figure_handle = plt.figure(figsize=(20, 12))
+        super().__init__(figure_handle)
+        
+        self.vid_name = vid_name
+        assert os.path.exists(vid_name)
+        self.name = os.path.splitext(os.path.split(vid_name)[1])[0]
+        with open(vid_name, 'rb') as f:
+            self.video_data = VideoReader(f)
+        self.fps = self.video_data.get_avg_fps()
+        
+        self.signals = signals
+        if titlefunc is None:
+            self.titlefunc = lambda s: f'Frame {s._current_idx}/{len(s)}, {s.fps} fps, {str(timedelta(seconds=s._current_idx/s.fps))}'
+
+        self.plot_handles = self._setup()
+
+        self.set_default_keybindings()
+        self._len = len(self.video_data)
+        # self.show_memory_slots(pos='bottom left')
+        plt.show(block=False)
+        self.update()
+    
+    def __len__(self):
+        return self._len
+
+    def _setup(self):
+        fig = self.figure
+        gs = GridSpec(nrows=len(self.signals), ncols=2, width_ratios=[2, 3])
+        ax = {}
+        plot_handles = {}
+        for signal_count, (signal_name, this_signal) in enumerate(self.signals.items()):
+            this_ax = fig.add_subplot(gs[signal_count, 1])
+            plot_handles[f'signal{signal_count}'] = this_ax.plot(this_signal.t, this_signal())
+            ylim = this_ax.get_ylim()
+            plot_handles[f'signal{signal_count}_tick'], = this_ax.plot([0, 0], ylim, 'k')
+            this_ax.set_title(signal_name)
+            if signal_count < len(self.signals)-1:
+                this_ax.get_xaxis().set_ticks([])
+            else:
+                this_ax.set_xlabel('Time (s)')
+            ax[f'signal{signal_count}'] = this_ax
+
+        ax['montage'] = fig.add_subplot(gs[:, 0])
+        plot_handles['montage'] = ax['montage'].imshow(self.video_data[0].asnumpy())
+        plot_handles['ax'] = ax
+        plot_handles['fig'] = fig
+        signal_ax = [v for k,v in plot_handles['ax'].items() if 'signal' in k]
+        signal_ax[0].get_shared_x_axes().join(*signal_ax)
+        plot_handles['signal_ax'] = signal_ax
+        return plot_handles
+    
+    def update(self):
+        self.plot_handles['montage'].set_data(self.video_data[self._current_idx].asnumpy())
+        self.plot_handles['ax']['montage'].set_title(self.titlefunc(self))
+        for signal_count, this_signal in enumerate(self.signals.items()):
+            # ylim = self.plot_handles['ax'][f'signal{signal_count}'].get_ylim()
+            self.plot_handles[f'signal{signal_count}_tick'].set_xdata([self._current_idx/self.fps]*2)
+        super().update()
+        plt.draw()
 
 
 class TextView:
