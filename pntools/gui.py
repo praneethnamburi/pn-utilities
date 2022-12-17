@@ -14,7 +14,7 @@ Classes:
 """
 import io
 import os
-from datetime import timedelta
+from datetime import timedelta, datetime
 
 import ffmpeg
 import numpy as np
@@ -668,10 +668,15 @@ class VideoPlotBrowser(GenericBrowser):
             self.titlefunc = lambda s: f'Frame {s._current_idx}/{len(s)}, {s.fps} fps, {str(timedelta(seconds=s._current_idx/s.fps))}'
 
         self.plot_handles = self._setup()
+        self.plot_handles['ax']['montage'].set_axis_off()
 
         self.set_default_keybindings()
+        self.add_key_binding('e', self.extract_clip)
         self._len = len(self.video_data)
-        # self.show_memory_slots(pos='bottom left')
+        self.show_memory_slots(pos='bottom left')
+
+        self.figure.canvas.mpl_connect('button_press_event', self.onclick)
+        
         plt.show(block=False)
         self.update()
     
@@ -712,6 +717,35 @@ class VideoPlotBrowser(GenericBrowser):
             self.plot_handles[f'signal{signal_count}_tick'].set_xdata([self._current_idx/self.fps]*2)
         super().update()
         plt.draw()
+
+    def onclick(self, event):
+        """Right click mouse to seek to that frame."""
+        this_frame = round(event.xdata*self.fps)
+
+        # Right click to seek
+        if isinstance(this_frame, (int, float)) and (0 <= this_frame < self._len) and (str(event.button) == 'MouseButton.RIGHT'):
+            self._current_idx = this_frame
+            self.update()
+    
+    def extract_clip(self, start_frame=None, end_frame=None, sav_dir=None, out_rate=30):
+        """Save a video of screengrabs"""
+        if start_frame is None:
+            start_frame = self._idx_memory_slots['1']
+        if end_frame is None:
+            end_frame = self._idx_memory_slots['2']
+        assert end_frame > start_frame
+        if sav_dir is None:
+            sav_dir = os.path.join(CLIP_FOLDER, datetime.now().strftime("%Y%m%d_%H%M%S"))
+        if not os.path.exists(sav_dir):
+            os.mkdir(sav_dir)
+        print(f"Saving image sequence to {sav_dir}...")
+        for frame_count in range(start_frame, end_frame+1):
+            self._current_idx = frame_count
+            self.update()
+            self.figure.savefig(os.path.join(sav_dir, f'{frame_count:04d}.png'))
+        print("Done")
+        # vid_name = os.path.join(Path(sav_dir).parent)
+        # f"ffmpeg -framerate {out_rate} -start_number {start_frame} -i "
 
 
 class TextView:
