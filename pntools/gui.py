@@ -643,7 +643,7 @@ class VideoBrowser(GenericBrowser):
 
 
 class VideoPlotBrowser(GenericBrowser):
-    def __init__(self, vid_name:str, signals:dict, titlefunc=None, figure_handle=None):
+    def __init__(self, vid_name:str, signals:dict, titlefunc=None, figure_handle=None, event_win=None):
         """
         Browse a video and an array of sampled.Data side by side. 
         Assuming that the time vectors are synchronized across the video and the signals, there will be a black tick at the video frame being viewed.
@@ -655,6 +655,8 @@ class VideoPlotBrowser(GenericBrowser):
         from decord import VideoReader
         figure_handle = plt.figure(figsize=(20, 12))
         super().__init__(figure_handle)
+
+        self.event_win = event_win
         
         self.vid_name = vid_name
         assert os.path.exists(vid_name)
@@ -715,6 +717,9 @@ class VideoPlotBrowser(GenericBrowser):
         for signal_count, this_signal in enumerate(self.signals.items()):
             # ylim = self.plot_handles['ax'][f'signal{signal_count}'].get_ylim()
             self.plot_handles[f'signal{signal_count}_tick'].set_xdata([self._current_idx/self.fps]*2)
+        if self.event_win is not None:
+            curr_t = self._current_idx/self.fps
+            self.plot_handles['signal_ax'][0].set_xlim(curr_t+self.event_win[0], curr_t+self.event_win[1])
         super().update()
         plt.draw()
 
@@ -729,6 +734,8 @@ class VideoPlotBrowser(GenericBrowser):
     
     def extract_clip(self, start_frame=None, end_frame=None, sav_dir=None, out_rate=30):
         """Save a video of screengrabs"""
+        import subprocess
+        import shutil
         if start_frame is None:
             start_frame = self._idx_memory_slots['1']
         if end_frame is None:
@@ -742,7 +749,14 @@ class VideoPlotBrowser(GenericBrowser):
         for frame_count in range(start_frame, end_frame+1):
             self._current_idx = frame_count
             self.update()
-            self.figure.savefig(os.path.join(sav_dir, f'{frame_count:04d}.png'))
+            self.figure.savefig(os.path.join(sav_dir, f'{frame_count:08d}.png'))
+        print("Creating video from image sequence...")
+        cmd = f'cd {sav_dir} && ffmpeg -framerate {self.fps} -start_number 0 -i %08d.png -c:v h264_nvenc -b:v 10M -maxrate 12M -bufsize 24M -vf scale="-1:1080" -an "{sav_dir}.mp4"'
+        subprocess.getoutput(cmd)
+
+        print("Removing temporary folder...")
+        shutil.rmtree(sav_dir)
+        
         print("Done")
         # vid_name = os.path.join(Path(sav_dir).parent)
         # f"ffmpeg -framerate {out_rate} -start_number {start_frame} -i "
