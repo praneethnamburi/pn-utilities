@@ -15,6 +15,7 @@ import socket
 import fnmatch
 import time
 from copy import deepcopy
+from pathlib import Path
 from timeit import default_timer as timer
 
 if os.name == 'nt':
@@ -557,6 +558,29 @@ def find(pattern, path=None, exclude_hidden=True):
     if exclude_hidden:
         return [r for r in result if not (r.split(os.sep)[-1].startswith('~$') or r.split(os.sep)[-1].startswith('.'))]
     return result
+
+def change_image_dpi(files, dpi:int=300):
+    """
+    Change the dpi of a set of images, example - for publication
+
+    Usage - 
+        file_list = find('*.tif', r'C:\Dropbox (MIT)\Manuscripts\20230401 Elastic energy EDM\Premiere pro')
+        change_image_dpi(file_list)
+    """
+    from PIL import Image
+
+    if isinstance(files, str):
+        if os.path.isdir(files):
+            file_list = find('*.tif', path=files)
+        else:
+            file_list = [files]
+    else:
+        assert isinstance(files, (list, tuple))
+
+    for fname in file_list:
+        if not str(Path(fname).stem).endswith(f'_{dpi}dpi'):
+            im = Image.open(fname)
+            im.save(str(Path(fname).with_suffix(''))+f'_{dpi}dpi.tif', dpi=(dpi,dpi))
 
 def run(filename, start_line=1, end_line=None):
     """
