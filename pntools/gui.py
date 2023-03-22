@@ -751,7 +751,7 @@ class VideoPlotBrowser(GenericBrowser):
             self.update()
             self.figure.savefig(os.path.join(sav_dir, f'{frame_count:08d}.png'))
         print("Creating video from image sequence...")
-        cmd = f'cd {sav_dir} && ffmpeg -framerate {self.fps} -start_number 0 -i %08d.png -c:v h264_nvenc -b:v 10M -maxrate 12M -bufsize 24M -vf scale="-1:1080" -an "{sav_dir}.mp4"'
+        cmd = f'cd "{sav_dir}" && ffmpeg -framerate {self.fps} -start_number 0 -i %08d.png -c:v h264_nvenc -b:v 10M -maxrate 12M -bufsize 24M -vf scale="-1:1080" -an "{sav_dir}.mp4"'
         subprocess.getoutput(cmd)
 
         print("Removing temporary folder...")
