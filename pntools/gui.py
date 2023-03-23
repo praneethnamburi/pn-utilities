@@ -797,6 +797,31 @@ class TextView:
         self._text = self._ax.text(x, y, '\n'.join(self.text), va=va, ha=ha, family='monospace')
         plt.draw()
 
+class SignalBrowserKeyPress(SignalBrowser):
+    """Wrapper around plot_sync with key press features to make manual alignment process easier"""
+    def __init__(self, plot_data, titlefunc=None, figure_handle=None, reset_on_change=False):
+        super().__init__(plot_data, titlefunc, figure_handle, reset_on_change)
+        self.event_keys = {'1': [], '2':[], '3':[], 't':[]}
+    def __call__(self, event):
+        from pprint import pprint
+        super().__call__(event)
+        if event.name == 'key_press_event':
+            sr = self.data[self._current_idx].sr
+            if event.key in self.event_keys:
+                if event.key == '1':
+                    self.first = int(float(event.xdata)*sr)
+                    self.event_keys[event.key].append(self.first)
+                    print(f'first: {self.first}')
+                elif event.key == '2':
+                    self.second = int(float(event.xdata)*sr)
+                    self.event_keys[event.key].append(self.second)
+                    print(f'second: {self.second}')
+                elif event.key == '3':
+                    self.third = int(float(event.xdata)*sr)
+                    self.event_keys[event.key].append(self.third)
+                    print(f'second: {self.third}')
+                elif event.key == 't':
+                    pprint(self.event_keys)
 
 ### -------- Demonstration/example classes
 class ButtonFigureDemo(plt.Figure):
