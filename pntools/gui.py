@@ -30,6 +30,7 @@ from matplotlib.gridspec import GridSpec
 from pntools import sampled
 
 
+
 CLIP_FOLDER = 'C:\\data\\_clipcollection'
 
 
@@ -801,7 +802,7 @@ class SignalBrowserKeyPress(SignalBrowser):
     """Wrapper around plot_sync with key press features to make manual alignment process easier"""
     def __init__(self, plot_data, titlefunc=None, figure_handle=None, reset_on_change=False):
         super().__init__(plot_data, titlefunc, figure_handle, reset_on_change)
-        self.event_keys = {'1': [], '2':[], '3':[], 't':[]}
+        self.event_keys = {'1': [], '2':[], '3':[], 't':[], 'd':[]}
     def __call__(self, event):
         from pprint import pprint
         super().__call__(event)
@@ -819,9 +820,16 @@ class SignalBrowserKeyPress(SignalBrowser):
                 elif event.key == '3':
                     self.third = int(float(event.xdata)*sr)
                     self.event_keys[event.key].append(self.third)
-                    print(f'second: {self.third}')
+                    print(f'third: {self.third}')
                 elif event.key == 't':
-                    pprint(self.event_keys)
+                    pprint(self.event_keys, width=1)
+                    self.export = self.event_keys   
+                elif event.key == 'd':
+                    for key in self.event_keys:
+                        self.event_keys[key].clear()
+                    pprint(self.event_keys, width=1)
+
+                
 
 ### -------- Demonstration/example classes
 class ButtonFigureDemo(plt.Figure):
