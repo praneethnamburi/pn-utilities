@@ -559,7 +559,7 @@ def find(pattern, path=None, exclude_hidden=True):
         return [r for r in result if not (r.split(os.sep)[-1].startswith('~$') or r.split(os.sep)[-1].startswith('.'))]
     return result
 
-def change_image_dpi(files, dpi:int=300):
+def change_image_dpi(files, dpi:int=300, return_format:str='tif'):
     """
     Change the dpi of a set of images, example - for publication
 
@@ -576,11 +576,12 @@ def change_image_dpi(files, dpi:int=300):
             file_list = [files]
     else:
         assert isinstance(files, (list, tuple))
+        file_list = files
 
     for fname in file_list:
         if not str(Path(fname).stem).endswith(f'_{dpi}dpi'):
             im = Image.open(fname)
-            im.save(str(Path(fname).with_suffix(''))+f'_{dpi}dpi.tif', dpi=(dpi,dpi))
+            im.save(str(Path(fname).with_suffix(''))+f'_{dpi}dpi.{return_format}', dpi=(dpi,dpi))
 
 def run(filename, start_line=1, end_line=None):
     """
