@@ -861,7 +861,7 @@ class ComponentBrowser(GenericBrowser):
         plot_number = 0
         for xc in range(n_components-1):
             for yc in range(xc+1, n_components):
-                this_ax = self.figure.add_subplot(self.gs[0, plot_number])
+                this_ax = self.figure.add_subplot(self.gs[1, plot_number])
                 this_ax.set_title(str((xc+1, yc+1)))
                 self.plot_handles['ax_pca'][plot_number] = this_ax
                 self.plot_handles[f'scatter_plot_{xc+1}_{yc+1}'] = this_ax.scatter(pca.components_[xc], pca.components_[yc], picker=5)
@@ -871,22 +871,25 @@ class ComponentBrowser(GenericBrowser):
         
         n_signals = data.shape[-1]
         self.plot_handles['signal_plots'] = []
-        this_ax = self.figure.add_subplot(self.gs[1, 0])
+        this_ax = self.figure.add_subplot(self.gs[2, 0])
         self.plot_handles['ax_signal_plots'] = this_ax
         for signal_count in range(n_signals):
             self.plot_handles['signal_plots'].append(this_ax.plot(data[:, signal_count])[0])
 
-        self.plot_handles['ax_current_signal'] = self.figure.add_subplot(self.gs[1, 1])
+        self.plot_handles['ax_current_signal'] = self.figure.add_subplot(self.gs[2, 1])
         self.plot_handles['current_signal'], = self.plot_handles['ax_current_signal'].plot(list(range(data.shape[0])), [np.nan]*data.shape[0])
         self.plot_handles['ax_current_signal'].set_xlim(self.plot_handles['ax_signal_plots'].get_xlim())
         self.plot_handles['ax_current_signal'].set_ylim(self.plot_handles['ax_signal_plots'].get_ylim())
 
-        self.plot_handles['ax_history_signal'] = self.figure.add_subplot(self.gs[1, 2])
+        self.plot_handles['ax_history_signal'] = self.figure.add_subplot(self.gs[2, 2])
 
-        self.plot_handles['ax_signal_full'] = self.figure.add_subplot(self.gs[2, :])
+        self.plot_handles['ax_signal_full'] = self.figure.add_subplot(self.gs[0, :])
         self.plot_handles['signal_full'], = self.plot_handles['ax_signal_full'].plot(*self.signal(''))
         self.plot_handles['signal_current_piece'], = self.plot_handles['ax_signal_full'].plot([], [], color='darkorange')
-
+        
+        this_ylim = self.plot_handles['ax_signal_full'].get_ylim()
+        for x_pos in np.r_[:n_signals+1]:
+            self.plot_handles['ax_signal_full'].plot([x_pos]*2, this_ylim, 'k', linewidth=0.2)
         self.disable_memory_slots()
         self.add_key_binding('r', self.clear_axes)
         plt.show(block=False)        
