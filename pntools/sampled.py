@@ -325,11 +325,11 @@ class Interval:
 
 
 class Data: # Signal processing
-    def __init__(self, sig, sr, axis=None, history=None, t0=0., properties:dict=None):
+    def __init__(self, sig, sr, axis=None, history=None, t0=0., meta=None):
         """
         axis (int) time axis
         t0 (float) time at start sample
-        properties (dict) additional properties to write into the object (e.g. name)
+        meta is metadata that you can store in sampled data that is propagated by the clone method
         NOTE: When inheriting from this class, if the parameters of the
         __init__ method change, then make sure to rewrite the _clone method
         """
@@ -347,9 +347,7 @@ class Data: # Signal processing
             assert isinstance(history, list)
             self._history = history
         self._t0 = t0
-        if properties is not None:
-            for k, v in properties.items():
-                setattr(self, k, v)
+        self.meta = meta
     
     def __call__(self, col=None):
         """Return either a specific column or the entire set 2D signal"""
@@ -369,7 +367,12 @@ class Data: # Signal processing
             his = self._history # only useful when cloning without manipulating the data, e.g. returning a subset of columns
         else:
             his = self._history + [his_append]
-        return self.__class__(proc_sig, self.sr, self.axis, his, self._t0)
+        
+        if hasattr(self, 'meta'):
+            meta = self.meta
+        else:
+            meta = None
+        return self.__class__(proc_sig, self.sr, self.axis, his, self._t0, meta)
 
     def analytic(self):
         proc_sig = hilbert(self._sig, axis=self.axis)
@@ -512,6 +515,12 @@ class Data: # Signal processing
     def _slice_to_interval(self, key: slice) -> Interval:
         assert key.step is None # otherwise, the sampling rate is going to change, and could cause aliasing without proper filtering
         # IF INTEGERS, assume indices, IF FLOAT, assume time
+        if isinstance(key.start, str): # for things like data['t_start':'t_end']
+            assert hasattr(self, 'meta') and key.start in self.meta
+            key = slice(self.meta[key.start], key.stop, None)
+        if isinstance(key.stop, str):
+            assert hasattr(self, 'meta') and key.stop in self.meta
+            key = slice(key.start, self.meta[key.stop], None)
         if isinstance(key.start, float) or isinstance(key.stop, float):
             intvl_start = key.start
             if key.start is None:
@@ -538,7 +547,11 @@ class Data: # Signal processing
         rng_start = sorted((0, key.start.sample-offset, len(self)-1))[1]
         rng_end = sorted((0, key.end.sample-offset+1, len(self)))[1] # +1 because interval object includes both ends!
         proc_sig = self._sig.take(indices=range(rng_start, rng_end), axis=self.axis)
-        return self.__class__(proc_sig, self.sr, self.axis, his, self.t[rng_start])
+        if hasattr(self, 'meta'):
+            meta = self.meta
+        else:
+            meta = None
+        return self.__class__(proc_sig, self.sr, self.axis, his, self.t[rng_start], meta)
 
     def __getitem__(self, key):
         """
@@ -567,6 +580,10 @@ class Data: # Signal processing
                 key = self.t[key]
             return interp1d(self.t, self._sig, axis=self.axis)(key)
 
+        if isinstance(key, str):
+            if hasattr(self, 'meta') and key in self.meta:
+                return self.meta[key]
+            
         assert isinstance(key, (Interval, slice))
         if isinstance(key, slice):
             key = self._slice_to_interval(key)
@@ -658,7 +675,11 @@ class Data: # Signal processing
     def resample(self, new_sr, *args, **kwargs):
         """args and kwargs will be passed to scipy.signal.resample"""
         proc_sig = resample(self._sig, round(len(self)*new_sr/self.sr), axis=self.axis, *args, **kwargs)
-        return self.__class__(proc_sig, sr=new_sr, axis=self.axis, history=self._history+[('resample', new_sr)], t0=self._t0)
+        if hasattr(self, 'meta'):
+            meta = self.meta
+        else:
+            meta = None
+        return self.__class__(proc_sig, sr=new_sr, axis=self.axis, history=self._history+[('resample', new_sr)], t0=self._t0, meta=meta)
 
 
 class Event(Interval):
