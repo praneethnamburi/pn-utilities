@@ -681,6 +681,20 @@ class Data: # Signal processing
             meta = None
         return self.__class__(proc_sig, sr=new_sr, axis=self.axis, history=self._history+[('resample', new_sr)], t0=self._t0, meta=meta)
 
+class DataList(list):
+    def __call__(self, **kwargs):
+        ret = self
+        for key, val in kwargs.items():
+            if key.endswith('_lim') and (key.removesuffix('_lim')) in self[0].meta:
+                assert len(val) == 2
+                ret = [s for s in ret if val[0] <= s.meta[key] <= val[1]]
+            elif key.endswith('_any') and (key.removesuffix('_lim')) in self[0].meta:
+                ret = [s for s in ret if s.meta[key] in val]
+            elif key in self[0].meta:
+                ret = [s for s in ret if s.meta[key] == val]
+            else:
+                continue # key was not in meta
+        return self.__class__(ret)
 
 class Event(Interval):
     def __init__(self, start, end=None, **kwargs):
