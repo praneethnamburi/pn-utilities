@@ -1200,6 +1200,16 @@ def split_filename(fname:str) -> tuple:
     path = os.path.dirname(fname)
     return path, name, ext
 
+def scale_data(d:np.ndarray, d_lim:tuple=None, clip:bool=True) -> np.ndarray: # scale the input between 0 and 1
+    """Scale data in a numpy array such that the entries in d_lim scale to (0,1)"""
+    if d_lim is None:
+        d_lim = (np.min(d), np.max(d))
+    do = d_lim[0]
+    dw = d_lim[1] - d_lim[0]
+    if clip:
+        d[d < d_lim[0]] = np.nan
+        d[d > d_lim[1]] = np.nan
+    return (d - do)/dw
 
 ## Statistics
 def p_str(p_val, sep=''):
