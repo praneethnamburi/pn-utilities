@@ -836,7 +836,7 @@ class ComponentBrowser(GenericBrowser):
     def __init__(self, data, figure_handle=None, n_components=4, algorithm=PCA, scaler=StandardScaler):
         """
         data is a 2d numpy array with number of signals on dim1, and number of time points on dim2
-        algorithm (class) - (sklearn.decomposition.PCA, umap.UMAP, sklearn.manifold.TSNE)
+        algorithm (class) - (sklearn.decomposition.PCA, umap.UMAP, sklearn.manifold.TSNE, sklearn.decomposition.FastICA)
         example - 
             import projects.gaitmusic as gm
             mr = gm.MusicRunning01()
