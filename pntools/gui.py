@@ -18,6 +18,9 @@ from datetime import timedelta, datetime
 
 import ffmpeg
 import numpy as np
+from sklearn.decomposition import PCA
+from sklearn.preprocessing import StandardScaler
+
 import matplotlib as mpl
 from matplotlib import pyplot as plt
 from matplotlib import axes as maxes
@@ -830,10 +833,10 @@ class SignalBrowserKeyPress(SignalBrowser):
                     pprint(self.event_keys, width=1)
 
 class ComponentBrowser(GenericBrowser):
-    def __init__(self, data, figure_handle=None, n_components=4):
+    def __init__(self, data, figure_handle=None, n_components=4, algorithm=PCA, scaler=StandardScaler):
         """
-        data is a 2d numpy array with number of time points on dim1, and number of signals on dim2
-
+        data is a 2d numpy array with number of signals on dim1, and number of time points on dim2
+        algorithm (class) - (sklearn.decomposition.PCA, umap.UMAP, sklearn.manifold.TSNE)
         example - 
             import projects.gaitmusic as gm
             mr = gm.MusicRunning01()
@@ -842,18 +845,23 @@ class ComponentBrowser(GenericBrowser):
             gui.ComponentBrowser(sig_pieces)
         """
         super().__init__(figure_handle)
-
-        from sklearn.decomposition import PCA
+        
         self.n_componenets = n_components
-        pca = PCA(n_components=n_components)
-        pca.fit(data)
+        reducer = algorithm(n_components=n_components)
+
+        if scaler is None:
+            data_scaled = data
+        else:
+            data_scaled = scaler().fit_transform(data)
+
+        data_transform = reducer.fit_transform(data_scaled)
         self.cid.append(self.figure.canvas.mpl_connect('pick_event', self.onpick))
 
         self.data = data
-        self.signal = sampled.Data(self.data.T.flatten(), sr=self.data.shape[0])
+        self.signal = sampled.Data(self.data.flatten(), sr=self.n_timepts)
 
-        n_pca_plots = int(n_components*(n_components-1)/2)
-        self.gs = GridSpec(3, max(n_pca_plots, 4))
+        n_scatter_plots = int(n_components*(n_components-1)/2)
+        self.gs = GridSpec(3, max(n_scatter_plots, 4))
 
         self._data_index = 0
         self.plot_handles = {}
@@ -864,20 +872,19 @@ class ComponentBrowser(GenericBrowser):
                 this_ax = self.figure.add_subplot(self.gs[1, plot_number])
                 this_ax.set_title(str((xc+1, yc+1)))
                 self.plot_handles['ax_pca'][plot_number] = this_ax
-                self.plot_handles[f'scatter_plot_{xc+1}_{yc+1}'] = this_ax.scatter(pca.components_[xc], pca.components_[yc], picker=5)
+                self.plot_handles[f'scatter_plot_{xc+1}_{yc+1}'] = this_ax.scatter(data_transform[:, xc], data_transform[:, yc], picker=5)
                 self.plot_handles[f'scatter_highlight_{xc+1}_{yc+1}'], = this_ax.plot([], [], 'o', color='darkorange')
                 plot_number += 1
         
         
-        n_signals = data.shape[-1]
         self.plot_handles['signal_plots'] = []
         this_ax = self.figure.add_subplot(self.gs[2, 0])
         self.plot_handles['ax_signal_plots'] = this_ax
-        for signal_count in range(n_signals):
-            self.plot_handles['signal_plots'].append(this_ax.plot(data[:, signal_count])[0])
+        for signal_count in range(self.n_signals):
+            self.plot_handles['signal_plots'].append(this_ax.plot(self.data[signal_count, :])[0])
 
         self.plot_handles['ax_current_signal'] = self.figure.add_subplot(self.gs[2, 1])
-        self.plot_handles['current_signal'], = self.plot_handles['ax_current_signal'].plot(list(range(data.shape[0])), [np.nan]*data.shape[0])
+        self.plot_handles['current_signal'], = self.plot_handles['ax_current_signal'].plot(list(range(self.n_timepts)), [np.nan]*self.n_timepts)
         self.plot_handles['ax_current_signal'].set_xlim(self.plot_handles['ax_signal_plots'].get_xlim())
         self.plot_handles['ax_current_signal'].set_ylim(self.plot_handles['ax_signal_plots'].get_ylim())
 
@@ -888,12 +895,20 @@ class ComponentBrowser(GenericBrowser):
         self.plot_handles['signal_current_piece'], = self.plot_handles['ax_signal_full'].plot([], [], color='darkorange')
         
         this_ylim = self.plot_handles['ax_signal_full'].get_ylim()
-        for x_pos in np.r_[:n_signals+1]:
+        for x_pos in np.r_[:self.n_signals+1]:
             self.plot_handles['ax_signal_full'].plot([x_pos]*2, this_ylim, 'k', linewidth=0.2)
         self.disable_memory_slots()
         self.add_key_binding('r', self.clear_axes)
         plt.show(block=False)        
 
+    @property
+    def n_signals(self):
+        return self.data.shape[0]
+    
+    @property
+    def n_timepts(self):
+        return self.data.shape[-1]
+    
     def onpick(self, event):
         self.pick_event = event
         self._data_index = np.random.choice(event.ind)
@@ -906,9 +921,9 @@ class ComponentBrowser(GenericBrowser):
             if 'scatter_plot_' in handle_name:
                 this_data = np.squeeze(handle._offsets[self._data_index].data)
                 self.plot_handles[handle_name.replace('_plot_', '_highlight_')].set_data(this_data[0], this_data[1])
-        self.plot_handles['ax_history_signal'].plot(self.data[:, self._data_index])
-        self.plot_handles['current_signal'].set_ydata(self.data[:, self._data_index])
-        self.plot_handles['signal_current_piece'].set_data(np.arange(self.data.shape[0])/self.data.shape[0]+self._data_index, self.data[:, self._data_index])
+        self.plot_handles['ax_history_signal'].plot(self.data[self._data_index, :])
+        self.plot_handles['current_signal'].set_ydata(self.data[self._data_index, :])
+        self.plot_handles['signal_current_piece'].set_data(np.arange(self.n_timepts)/self.n_timepts+self._data_index, self.data[self._data_index, :])
         # self.plot_handles['signal_plots'][self._data_index].linewidth = 3
         plt.draw()
     
