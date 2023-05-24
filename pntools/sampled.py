@@ -431,6 +431,30 @@ class Data: # Signal processing
     
     def highpass(self, cutoff, order=None):
         return self._butterfilt(cutoff, order, 'high')
+
+    def smooth(self, window_len=10, window='hanning'):
+        if self._sig.ndim != 1:
+            raise ValueError("smooth only accepts 1 dimension arrays.")
+
+        if self._sig.size < window_len:
+            raise ValueError("Input vector needs to be bigger than window size.")
+
+        if window_len < 3:
+            return self
+
+        if window not in ['flat', 'hanning', 'hamming', 'bartlett', 'blackman']:
+            raise ValueError("""Window is on of 'flat', 'hanning', 'hamming', 'bartlett', 'blackman'""")
+
+        sig = np.r_[2 * self._sig[0] - self._sig[window_len:0:-1], self._sig, 2 * self._sig[-1] - self._sig[-2:-window_len - 2:-1]]
+
+        if window == 'flat':  # moving average
+            win = np.ones(window_len, 'd')
+        else:
+            win = eval('np.' + window + '(window_len)')
+
+        sig_conv = np.convolve(win / win.sum(), sig, mode='same')
+
+        return sig_conv[window_len: -window_len]
     
     def get_trend_airPLS(self, *args, **kwargs):
         from airPLS import airPLS
@@ -441,6 +465,8 @@ class Data: # Signal processing
         trend = self.get_trend_airPLS(*args, **kwargs)
         proc_sig = self._sig - trend()
         return self._clone(proc_sig, ('detrend_airPLS', {'args':args, **kwargs}))
+
+
 
     def medfilt(self, order=11):
         """
