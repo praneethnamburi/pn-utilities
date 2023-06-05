@@ -18,9 +18,12 @@ from datetime import timedelta, datetime
 
 import ffmpeg
 import numpy as np
+from hdbscan import HDBSCAN
 from sklearn.decomposition import PCA
+from sklearn.metrics import silhouette_score
 from sklearn.preprocessing import StandardScaler
 
+import seaborn as sns
 import matplotlib as mpl
 from matplotlib import pyplot as plt
 from matplotlib import axes as maxes
@@ -833,7 +836,7 @@ class SignalBrowserKeyPress(SignalBrowser):
                     pprint(self.event_keys, width=1)
 
 class ComponentBrowser(GenericBrowser):
-    def __init__(self, data, figure_handle=None, n_components=4, algorithm=PCA, scaler=StandardScaler):
+    def __init__(self, data, figure_handle=None, n_components=4, scaler=StandardScaler, algorithm=PCA, clusterer=HDBSCAN):
         """
         data is a 2d numpy array with number of signals on dim1, and number of time points on dim2
         algorithm (class) - (sklearn.decomposition.PCA, umap.UMAP, sklearn.manifold.TSNE, sklearn.decomposition.FastICA)
@@ -846,8 +849,8 @@ class ComponentBrowser(GenericBrowser):
         """
         super().__init__(figure_handle)
         
-        self.n_componenets = n_components
-        reducer = algorithm(n_components=n_components)
+        self.n_components = n_components
+        reducer = algorithm(n_components=n_components, random_state=12345)
 
         if scaler is None:
             data_scaled = data
@@ -855,10 +858,18 @@ class ComponentBrowser(GenericBrowser):
             data_scaled = scaler().fit_transform(data)
 
         data_transform = reducer.fit_transform(data_scaled)
+
+        # Clustering transformed data.
+        labels = clusterer(min_cluster_size=5).fit_predict(data_transform)
+        palette = sns.color_palette('tab10', np.unique(labels).max() + 1)
+        colors = [palette[x] if x >= 0 else (0.0, 0.0, 0.0) for x in labels]
+
         self.cid.append(self.figure.canvas.mpl_connect('pick_event', self.onpick))
 
         self.data = data
+        self.n_cycles = np.shape(data)[0]
         self.signal = sampled.Data(self.data.flatten(), sr=self.n_timepts)
+        self.labels = labels
 
         n_scatter_plots = int(n_components*(n_components-1)/2)
         self.gs = GridSpec(3, max(n_scatter_plots, 4))
@@ -872,11 +883,10 @@ class ComponentBrowser(GenericBrowser):
                 this_ax = self.figure.add_subplot(self.gs[1, plot_number])
                 this_ax.set_title(str((xc+1, yc+1)))
                 self.plot_handles['ax_pca'][plot_number] = this_ax
-                self.plot_handles[f'scatter_plot_{xc+1}_{yc+1}'] = this_ax.scatter(data_transform[:, xc], data_transform[:, yc], picker=5)
+                self.plot_handles[f'scatter_plot_{xc+1}_{yc+1}'] = this_ax.scatter(data_transform[:, xc], data_transform[:, yc], c=colors, picker=5)
                 self.plot_handles[f'scatter_highlight_{xc+1}_{yc+1}'], = this_ax.plot([], [], 'o', color='darkorange')
                 plot_number += 1
-        
-        
+
         self.plot_handles['signal_plots'] = []
         this_ax = self.figure.add_subplot(self.gs[2, 0])
         self.plot_handles['ax_signal_plots'] = this_ax
@@ -891,7 +901,9 @@ class ComponentBrowser(GenericBrowser):
         self.plot_handles['ax_history_signal'] = self.figure.add_subplot(self.gs[2, 2])
 
         self.plot_handles['ax_signal_full'] = self.figure.add_subplot(self.gs[0, :])
-        self.plot_handles['signal_full'], = self.plot_handles['ax_signal_full'].plot(*self.signal(''))
+        self.plot_handles['signal_full'] = \
+            [self.plot_handles['ax_signal_full'].plot(self.signal.t[i: i + self.n_timepts], self.signal()[i: i + self.n_timepts], color=colors[i // self.n_timepts]) for i in range(0, len(self.signal()) - self.n_timepts + 1, self.n_timepts)]
+        self.plot_handles['signal_full'] = self.plot_handles['ax_signal_full'].set_title("Silhouette Coefficient: " + str(np.round(silhouette_score(data_transform, labels), 3)))
         self.plot_handles['signal_current_piece'], = self.plot_handles['ax_signal_full'].plot([], [], color='darkorange')
         
         this_ylim = self.plot_handles['ax_signal_full'].get_ylim()
@@ -899,7 +911,12 @@ class ComponentBrowser(GenericBrowser):
             self.plot_handles['ax_signal_full'].plot([x_pos]*2, this_ylim, 'k', linewidth=0.2)
         self.disable_memory_slots()
         self.add_key_binding('r', self.clear_axes)
-        plt.show(block=False)        
+        plt.show(block=False)
+
+
+
+
+
 
     @property
     def n_signals(self):
