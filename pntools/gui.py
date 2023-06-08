@@ -906,7 +906,7 @@ class ComponentBrowser(GenericBrowser):
         self.plot_handles['signal_full'] = \
             [self.plot_handles['ax_signal_full'].plot(self.signal.t[i: i + self.n_timepts], self.signal()[i: i + self.n_timepts], color=colors[i // self.n_timepts]) for i in range(0, len(self.signal()) - self.n_timepts + 1, self.n_timepts)]
         self.plot_handles['signal_full'] = self.plot_handles['ax_signal_full'].set_title("DBCV Score: " + str(np.round(DBCV(data_transform, labels), 3)))
-        self.plot_handles['signal_current_piece'], = self.plot_handles['ax_signal_full'].plot([], [], color='darkorange')
+        self.plot_handles['signal_current_piece'], = self.plot_handles['ax_signal_full'].plot([], [], color='gray', linewidth=2)
         
         this_ylim = self.plot_handles['ax_signal_full'].get_ylim()
         for x_pos in np.r_[:self.n_signals+1]:
