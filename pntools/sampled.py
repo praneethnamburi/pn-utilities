@@ -4,7 +4,7 @@ Tools for working with sampled data
 
 import collections
 import numpy as np
-from scipy.signal import hilbert, firwin, filtfilt, butter, resample
+from scipy.signal import hilbert, firwin, filtfilt, butter, resample, iirnotch
 from scipy.fft import fft, fftfreq
 from scipy.interpolate import interp1d
 
@@ -425,6 +425,12 @@ class Data: # Signal processing
             proc_sig[nan_bool] = np.NaN # put back the NaNs in the same place
 
         return self._clone(proc_sig, (btype+'pass', {'filter':'butter', 'cutoff':cutoff, 'order':order, 'NaN manipulation': nan_manip}))
+
+    def notch(self, cutoff, q=30):
+        b, a = iirnotch(cutoff, q, self.sr)
+        proc_sig = filtfilt(b, a, self._sig, axis=self.axis)
+
+        return self._clone(proc_sig, ('notch', {'filter': 'iirnotch', 'cutoff': cutoff, 'q': q}))
 
     def lowpass(self, cutoff, order=None):
         return self._butterfilt(cutoff, order, 'low')
