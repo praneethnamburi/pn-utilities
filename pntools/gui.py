@@ -33,7 +33,7 @@ from matplotlib.widgets import LassoSelector as LassoSelectorWidget
 from matplotlib.path import Path
 from matplotlib.gridspec import GridSpec
 
-from pntools import sampled, DBCV
+from pntools import sampled
 
 
 
@@ -836,7 +836,7 @@ class SignalBrowserKeyPress(SignalBrowser):
                     pprint(self.event_keys, width=1)
 
 class ComponentBrowser(GenericBrowser):
-    def __init__(self, data, figure_handle=None, n_components=4, scaler=StandardScaler, features=None, algorithm=PCA, clusterer=HDBSCAN):
+    def __init__(self, data, data_transform, labels, figure_handle=None):
         """
         data is a 2d numpy array with number of signals on dim1, and number of time points on dim2
         algorithm (class) - (sklearn.decomposition.PCA, umap.UMAP, sklearn.manifold.TSNE, sklearn.decomposition.FastICA)
@@ -848,22 +848,9 @@ class ComponentBrowser(GenericBrowser):
             gui.ComponentBrowser(sig_pieces)
         """
         super().__init__(figure_handle)
-        
-        self.n_components = n_components
-        reducer = algorithm(n_components=n_components, random_state=12345)
 
-        if features is None:
-            if scaler is None:
-                data_scaled = data
-            else:
-                data_scaled = scaler().fit_transform(data)
-        else:
-            data_scaled = features
+        n_components = np.shape(data_transform)[1]
 
-        data_transform = reducer.fit_transform(data_scaled)
-
-        # Clustering transformed data.
-        labels = clusterer(min_cluster_size=50, min_samples=2).fit_predict(data_transform)
         palette = sns.color_palette('Set2', np.unique(labels).max() + 1)
         colors = [palette[x] if x >= 0 else (0.0, 0.0, 0.0) for x in labels]
 
@@ -905,7 +892,6 @@ class ComponentBrowser(GenericBrowser):
         self.plot_handles['ax_signal_full'] = self.figure.add_subplot(self.gs[0, :])
         self.plot_handles['signal_full'] = \
             [self.plot_handles['ax_signal_full'].plot(self.signal.t[i: i + self.n_timepts], self.signal()[i: i + self.n_timepts], color=colors[i // self.n_timepts]) for i in range(0, len(self.signal()) - self.n_timepts + 1, self.n_timepts)]
-        self.plot_handles['signal_full'] = self.plot_handles['ax_signal_full'].set_title("DBCV Score: " + str(np.round(DBCV(data_transform, labels), 3)))
         self.plot_handles['signal_current_piece'], = self.plot_handles['ax_signal_full'].plot([], [], color='gray', linewidth=2)
         
         this_ylim = self.plot_handles['ax_signal_full'].get_ylim()
