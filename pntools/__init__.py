@@ -23,10 +23,9 @@ if os.name == 'nt':
 import numpy as np
 import blinker
 
-try: # this is for the benefit of bpn and other blender-based modules that use pntools
-    import bpy
+if any('blender' in arg for arg in sys.argv):
     BLENDER_MODE = True
-except ImportError:
+else:
     BLENDER_MODE = False
 
 
