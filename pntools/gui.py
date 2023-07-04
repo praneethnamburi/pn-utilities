@@ -13,8 +13,10 @@ Classes:
         Add clickable navigation.
 """
 import io
+import json
 import os
 from datetime import timedelta, datetime
+from pathlib import Path
 
 import ffmpeg
 import numpy as np
@@ -30,7 +32,7 @@ from matplotlib import axes as maxes
 from matplotlib import lines as mlines
 from matplotlib.widgets import Button as ButtonWidget
 from matplotlib.widgets import LassoSelector as LassoSelectorWidget
-from matplotlib.path import Path
+from matplotlib.path import Path as mPath
 from matplotlib.gridspec import GridSpec
 
 from pntools import sampled
@@ -131,7 +133,7 @@ class Selector:
 
     def onselect(self, verts):
         """Select if not previously selected; Unselect if previously selected"""
-        selected_ind = Path(verts).contains_points(self.get_data())
+        selected_ind = mPath(verts).contains_points(self.get_data())
         self.sel = np.logical_xor(selected_ind, self.sel)
         sel_x = list(self.xdata[self.sel])
         sel_y = list(self.ydata[self.sel])
@@ -622,8 +624,10 @@ class VideoBrowser(GenericBrowser):
         self.set_default_keybindings()
         self.add_key_binding('e', self.extract_clip)
         self.show_memory_slots(pos='bottom left')
-        plt.show(block=False)
-        self.update()
+
+        if self.__class__.__name__ == 'VideoBrowser': # if an inherited class is accessing this, then don't run the update function here
+            plt.show(block=False)
+            self.update()
 
     def update(self):
         self._im.set_data(self.data[self._current_idx].asnumpy())
@@ -768,6 +772,81 @@ class VideoPlotBrowser(GenericBrowser):
         # vid_name = os.path.join(Path(sav_dir).parent)
         # f"ffmpeg -framerate {out_rate} -start_number {start_frame} -i "
 
+
+class VideoPointAnnotator(VideoBrowser):
+    """Add point annotations to videos.
+    Use arrow keys to navigate frames.
+    Select a 'label category' from 0 to 9 by pressing the corresponding number key.
+    Point your mouse at a desired location in the video and press the forward slash / button to add a point annotation.
+    When you're done, press 's' to save your work, which will create a '<video name>_annotatoins.json' file in the same folder as the video file.
+    These annotations will be automagically loaded when you try to annotate this file again.
+    """
+    def __init__(self, vid_name, titlefunc=None, figure_handle=None):
+        super().__init__(vid_name, titlefunc, figure_handle)
+        self.hide_memory_slots()
+        self.disable_memory_slots()
+
+        self.fname_annotations = os.path.join(Path(self.fname).parent, Path(self.fname).stem + '_annotations.json')
+        self.annotations = self.load_annotations()
+        self.add_key_binding('s', on_press_function=self.save_annotations)
+
+        self._current_label = '0'
+        self._current_label_text = TextView([f'Current label: {self._current_label}'], self.figure, pos='bottom center')
+        self.mpl_remove_bindings(['/', '.'])
+
+        self.plot_handles = {}
+        self.palette = sns.color_palette('Set2', max([int(x) for x in self.annotations.keys()])+1)
+        for label, color in zip(self.annotations, self.palette):
+            self.plot_handles[f'label_{label}'], = self._ax.plot([], [], 'o', color=color)
+
+        plt.show(block=False)
+        self.update()
+    
+    def __call__(self, event):
+        super().__call__(event)
+        if event.name == 'key_press_event':
+            current_label = self._current_label
+            frame_number = str(self._current_idx)
+            if event.key == '/': # Add annotation at frame. If it exists, it'll get overwritten.
+                self.annotations[current_label][frame_number] = float(event.xdata), float(event.ydata)
+                self.update()
+            elif event.key == '.': # remove annotation at the current frame if it exists
+                self.annotations[current_label].pop(frame_number, None)
+                self.update()
+            elif event.key in self.annotations:
+                self._current_label = event.key
+                self.update_current_label_text(draw=True)
+    
+    def update(self):
+        self.update_annotation_display(draw=False)
+        self.update_current_label_text(draw=False)
+        super().update()
+        self.reset_axes()
+    
+    def update_annotation_display(self, draw=False):
+        for label, annot_dict in self.annotations.items():
+            this_data = ([], [])
+            frame_number = str(self._current_idx)
+            if frame_number in annot_dict: 
+                this_data = annot_dict[frame_number]
+            self.plot_handles[f'label_{label}'].set_data(*this_data)
+        if draw:
+            plt.draw()
+    
+    def update_current_label_text(self, draw=False):
+        self._current_label_text.update([f'Current label: {self._current_label}'])
+        if draw:
+            plt.draw()
+
+    def load_annotations(self, event=None):
+        if os.path.exists(self.fname_annotations):
+            with open(self.fname_annotations, 'r') as f:
+                return json.load(f)
+        return {str(label):{} for label in range(10)}
+        
+    def save_annotations(self, event=None):
+        with open(self.fname_annotations, 'w') as f:
+            json.dump(self.annotations, f, indent=4)
 
 class TextView:
     """Show text array line by line"""
