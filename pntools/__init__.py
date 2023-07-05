@@ -23,11 +23,12 @@ if os.name == 'nt':
 import numpy as np
 import blinker
 
-if any('blender' in arg for arg in sys.argv):
+try:
     BLENDER_MODE = True
-else:
+    import bpy
+except ImportError:
     BLENDER_MODE = False
-
+    
 
 ## Inheritance
 class AddMethods:
