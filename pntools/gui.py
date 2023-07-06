@@ -20,10 +20,6 @@ from pathlib import Path
 
 import ffmpeg
 import numpy as np
-from hdbscan import HDBSCAN
-from sklearn.decomposition import PCA
-from sklearn.metrics import silhouette_score
-from sklearn.preprocessing import StandardScaler
 
 import seaborn as sns
 import matplotlib as mpl
@@ -915,10 +911,13 @@ class SignalBrowserKeyPress(SignalBrowser):
                     pprint(self.event_keys, width=1)
 
 class ComponentBrowser(GenericBrowser):
-    def __init__(self, data, data_transform, labels, figure_handle=None):
+    def __init__(self, data, data_transform, labels=None, figure_handle=None, class_names=None):
         """
         data is a 2d numpy array with number of signals on dim1, and number of time points on dim2
-        algorithm (class) - (sklearn.decomposition.PCA, umap.UMAP, sklearn.manifold.TSNE, sklearn.decomposition.FastICA)
+        data_transform is the transformed data, still a 2d numpy array with number of signals x number of components
+            For example, transformed using one of (sklearn.decomposition.PCA, umap.UMAP, sklearn.manifold.TSNE, sklearn.decomposition.FastICA)
+        labels are n_signals x 1 array with each entry representing the class of each signal piece. MAKE SURE ALL CLASS LABELS ARE POSITIVE
+        class_names is a dictionary, for example {0:'Unclassified', '1:Resonant', '2:NonResonant'}
         example - 
             import projects.gaitmusic as gm
             mr = gm.MusicRunning01()
@@ -931,18 +930,29 @@ class ComponentBrowser(GenericBrowser):
             Double click on the time course plot to select a gait cycle from the time series plot.
         """
         super().__init__(figure_handle)
+        self.data = data
 
         n_components = np.shape(data_transform)[1]
+        
+        if labels is None:
+            self.labels = np.zeros(self.n_signals, dtype=int)
+        else:
+            assert len(labels) == self.n_signals
+            self.labels = labels
+        assert np.min(self.labels) >= 0 # make sure all class labels are zero or positive!
 
-        palette = sns.color_palette('Set2', np.unique(labels).max() + 1)
-        colors = [palette[x] if x >= 0 else (0.0, 0.0, 0.0) for x in labels]
+        class_labels = list(np.unique(self.labels))
+        self.n_classes = len(class_labels) 
+        if class_names is None:
+            self.class_names = {class_label: f'Class_{class_label}' for class_label in class_labels}
+        else:
+            assert set(class_names.keys()) == set(class_labels)
+            self.class_names = class_names
+        
+        self.classes = [ClassLabel(label=label, name=self.class_names[label]) for label in self.labels]
 
         self.cid.append(self.figure.canvas.mpl_connect('pick_event', self.onpick))
-        self.cid.append(self.figure.canvas.mpl_connect('button_press_event', self.select_gaitcycle_dblclick))
-
-        self.data = data
-        self.signal = sampled.Data(self.data.flatten(), sr=self.n_timepts)
-        self.labels = labels
+        self.cid.append(self.figure.canvas.mpl_connect('button_press_event', self.select_signal_piece_dblclick))
 
         n_scatter_plots = int(n_components*(n_components-1)/2)
         self.gs = GridSpec(3, max(n_scatter_plots, 4))
@@ -956,7 +966,7 @@ class ComponentBrowser(GenericBrowser):
                 this_ax = self.figure.add_subplot(self.gs[1, plot_number])
                 this_ax.set_title(str((xc+1, yc+1)))
                 self.plot_handles['ax_pca'][plot_number] = this_ax
-                self.plot_handles[f'scatter_plot_{xc+1}_{yc+1}'] = this_ax.scatter(data_transform[:, xc], data_transform[:, yc], c=colors, picker=5)
+                self.plot_handles[f'scatter_plot_{xc+1}_{yc+1}'] = this_ax.scatter(data_transform[:, xc], data_transform[:, yc], c=self.colors, picker=5)
                 self.plot_handles[f'scatter_highlight_{xc+1}_{yc+1}'], = this_ax.plot([], [], 'o', color='darkorange')
                 plot_number += 1
 
@@ -974,14 +984,23 @@ class ComponentBrowser(GenericBrowser):
         self.plot_handles['ax_history_signal'] = self.figure.add_subplot(self.gs[2, 2])
 
         self.plot_handles['ax_signal_full'] = self.figure.add_subplot(self.gs[0, :])
-        self.plot_handles['signal_full'] = \
-            [self.plot_handles['ax_signal_full'].plot(self.signal.t[i: i + self.n_timepts], self.signal()[i: i + self.n_timepts], color=colors[i // self.n_timepts]) for i in range(0, len(self.signal()) - self.n_timepts + 1, self.n_timepts)]
-        self.plot_handles['signal_current_piece'], = self.plot_handles['ax_signal_full'].plot([], [], color='gray', linewidth=2)
+        self.plot_handles['signal_full'] = []
+        time_index = np.r_[:self.n_timepts]/self.n_timepts
+        for idx, sig in enumerate(self.data):
+            this_plot_handle, = self.plot_handles['ax_signal_full'].plot(
+                idx + time_index, sig, color=self.colors[idx]
+            ) # assumes that there is only one line drawn per signal
+            self.plot_handles['signal_full'].append(this_plot_handle)
+        self.plot_handles['signal_selected_piece'], = self.plot_handles['ax_signal_full'].plot([], [], color='gray', linewidth=2)
         
         this_ylim = self.plot_handles['ax_signal_full'].get_ylim()
-        for x_pos in np.r_[:self.n_signals+1]:
+        for x_pos in np.r_[:self.n_signals+1]: # separators between signals
             self.plot_handles['ax_signal_full'].plot([x_pos]*2, this_ylim, 'k', linewidth=0.2)
         self.disable_memory_slots()
+        
+        self._class_text = TextView([], self.figure, pos='bottom left')
+        self.update_class_text()
+        
         self.add_key_binding('r', self.clear_axes)
         plt.show(block=False)
 
@@ -992,8 +1011,17 @@ class ComponentBrowser(GenericBrowser):
     @property
     def n_timepts(self):
         return self.data.shape[-1]
+
+    @property
+    def colors(self):
+        return [cl.color for cl in self.classes]
+
+    @property
+    def signal(self) -> sampled.Data:
+        """Return the 2d Numpy array as a signal."""
+        return sampled.Data(self.data.flatten(), sr=self.n_timepts)
     
-    def select_gaitcycle_dblclick(self, event):
+    def select_signal_piece_dblclick(self, event):
         if event.inaxes == self.plot_handles['ax_signal_full'] and event.dblclick: # If the click was inside the time course plot
             if 0 <= int(event.xdata) < self.data.shape[0]:
                 self._data_index = int(event.xdata)
@@ -1013,14 +1041,70 @@ class ComponentBrowser(GenericBrowser):
                 self.plot_handles[handle_name.replace('_plot_', '_highlight_')].set_data(this_data[0], this_data[1])
         self.plot_handles['ax_history_signal'].plot(self.data[self._data_index, :])
         self.plot_handles['current_signal'].set_ydata(self.data[self._data_index, :])
-        self.plot_handles['signal_current_piece'].set_data(np.arange(self.n_timepts)/self.n_timepts+self._data_index, self.data[self._data_index, :])
-        # self.plot_handles['signal_plots'][self._data_index].linewidth = 3
+        self.plot_handles['signal_selected_piece'].set_data(np.arange(self.n_timepts)/self.n_timepts+self._data_index, self.data[self._data_index, :])
+        # self.plot_handles['signal_full'][self._data_index].linewidth = 3
         plt.draw()
     
+    def update_class_text(self):
+        self._class_text.update([f'{k}:{v}' for k,v in self.class_names.items()])
+
     def clear_axes(self, event=None):
         self.plot_handles['ax_history_signal'].clear()
         plt.draw()
 
+
+class ClassLabel:
+    def __init__(self, 
+            label:int,                      # class label (0 - unclassified, 1 - non-resonant, 2 - resonant, etc.)
+            name:str = None,                # name of the class
+            assignment_type:str = 'auto',   # class label was assigned automatically ('auto') or manually ('manual')
+            annotations:list = None         # for adding annotations to a given class instance
+        ):
+        assert label >= 0
+        self._label = label
+        if name is None:
+            name = f'Class_{label}'
+        self.name = name
+        assert assignment_type in ('auto', 'manual')
+        self.assignment_type = assignment_type
+
+        self.palette = plt.get_cmap('tab20')([np.r_[0:1.5:0.05]])[0][:, :3]
+        # at the moment, colors are assigned automatically
+        self._update_colors()
+
+        if annotations is None:
+            self.annotations = []
+
+    @property
+    def color(self):
+        if self.is_auto():
+            return self.color_auto
+        return self.color_manual
+
+    @property
+    def label(self):
+        return self._label
+    
+    @label.setter
+    def label(self, val:int):
+        self._label = int(val)
+        self._update_colors()
+
+    def _update_colors(self):
+        if self._label == 0:
+            self.color_auto = self.color_manual = (0.0, 0.0, 0.0) # black
+        else:
+            self.color_auto = self.palette[(self._label-1)*2+1] # lighter
+            self.color_manual = self.palette[(self._label-1)*2]
+        
+    def is_auto(self):
+        return self.assignment_type == 'auto'
+    
+    def is_manual(self):
+        return self.assignment_type == 'manual'
+    
+    def add_annotation(self, annot:str):
+        self.annotations.append(annot)
 
 ### -------- Demonstration/example classes
 class ButtonFigureDemo(plt.Figure):
