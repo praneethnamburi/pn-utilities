@@ -925,6 +925,10 @@ class ComponentBrowser(GenericBrowser):
             lf = mr(10).ot
             sig_pieces = gm.gait_phase_analysis(lf, muscle_line_name='RSBL_Upper', target_samples=500)
             gui.ComponentBrowser(sig_pieces)
+
+            Single-click on scatter plots to select a gait cycle.
+            Press r to refresh 'recent history' plots.
+            Double click on the time course plot to select a gait cycle from the time series plot.
         """
         super().__init__(figure_handle)
 
@@ -934,6 +938,7 @@ class ComponentBrowser(GenericBrowser):
         colors = [palette[x] if x >= 0 else (0.0, 0.0, 0.0) for x in labels]
 
         self.cid.append(self.figure.canvas.mpl_connect('pick_event', self.onpick))
+        self.cid.append(self.figure.canvas.mpl_connect('button_press_event', self.select_gaitcycle_dblclick))
 
         self.data = data
         self.signal = sampled.Data(self.data.flatten(), sr=self.n_timepts)
@@ -987,6 +992,12 @@ class ComponentBrowser(GenericBrowser):
     @property
     def n_timepts(self):
         return self.data.shape[-1]
+    
+    def select_gaitcycle_dblclick(self, event):
+        if event.inaxes == self.plot_handles['ax_signal_full'] and event.dblclick: # If the click was inside the time course plot
+            if 0 <= int(event.xdata) < self.data.shape[0]:
+                self._data_index = int(event.xdata)
+                self.update()
     
     def onpick(self, event):
         self.pick_event = event
