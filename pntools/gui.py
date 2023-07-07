@@ -930,6 +930,7 @@ class ComponentBrowser(GenericBrowser):
             Double click on the time course plot to select a gait cycle from the time series plot.
         """
         super().__init__(figure_handle)
+        self.alpha = {'manual':0.8, 'auto':0.3}
         self.data = data
 
         n_components = np.shape(data_transform)[1]
@@ -967,7 +968,7 @@ class ComponentBrowser(GenericBrowser):
                 this_ax = self.figure.add_subplot(self.gs[1, plot_number])
                 this_ax.set_title(str((xc+1, yc+1)))
                 self.plot_handles['ax_pca'][plot_number] = this_ax
-                self.plot_handles[f'scatter_plot_{xc+1}_{yc+1}'] = this_ax.scatter(data_transform[:, xc], data_transform[:, yc], c=self.colors, picker=5)
+                self.plot_handles[f'scatter_plot_{xc+1}_{yc+1}'] = this_ax.scatter(data_transform[:, xc], data_transform[:, yc], c=self.colors, alpha=self.alpha['auto'], picker=5)
                 self.plot_handles[f'scatter_highlight_{xc+1}_{yc+1}'], = this_ax.plot([], [], 'o', color='darkorange')
                 plot_number += 1
 
@@ -1055,12 +1056,17 @@ class ComponentBrowser(GenericBrowser):
     
     def update_colors(self, data_idx=None, draw=True):
         if data_idx is None:
-            for h_sig_piece, class_label in zip(self.plot_handles['signal_full'], self.classes):
-                h_sig_piece.set_color(class_label.color)
-        else:
-            assert isinstance(data_idx, (list, tuple))
-            for this_data_idx in data_idx:
-                self.plot_handles['signal_full'][this_data_idx].set_color(self.classes[this_data_idx].color)
+            data_idx = list(range(self.n_signals))
+        assert isinstance(data_idx, (list, tuple))
+        for this_data_idx in data_idx:
+            this_color = self.classes[this_data_idx].color
+            self.plot_handles['signal_full'][this_data_idx].set_color(this_color)
+            for handle_name, handle in self.plot_handles.items():
+                if 'scatter_plot_' in handle_name:
+                    fc = handle.get_facecolors()
+                    fc[this_data_idx, :3] = this_color
+                    fc[this_data_idx, -1] = self.alpha['auto'] if self.classes[this_data_idx].is_auto() else self.alpha['manual']
+                    handle.set_facecolors(fc)
         if draw:
             plt.draw()
 
