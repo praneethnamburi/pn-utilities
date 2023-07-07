@@ -942,6 +942,7 @@ class ComponentBrowser(GenericBrowser):
         assert np.min(self.labels) >= 0 # make sure all class labels are zero or positive!
 
         class_labels = list(np.unique(self.labels))
+        self.class_labels_str = [str(x) for x in class_labels] # for detecting keypresses
         self.n_classes = len(class_labels) 
         if class_names is None:
             self.class_names = {class_label: f'Class_{class_label}' for class_label in class_labels}
@@ -998,9 +999,9 @@ class ComponentBrowser(GenericBrowser):
             self.plot_handles['ax_signal_full'].plot([x_pos]*2, this_ylim, 'k', linewidth=0.2)
         self.disable_memory_slots()
         
-        self._class_text = TextView([], self.figure, pos='bottom left')
-        self.update_class_text()
-        
+        self._class_info_text = TextView([], self.figure, pos='bottom left')
+        self.update_class_info_text()
+
         self.add_key_binding('r', self.clear_axes)
         plt.show(block=False)
 
@@ -1022,12 +1023,14 @@ class ComponentBrowser(GenericBrowser):
         return sampled.Data(self.data.flatten(), sr=self.n_timepts)
     
     def select_signal_piece_dblclick(self, event):
+        """Double click a signal piece in the timecourse view to highlight that point."""
         if event.inaxes == self.plot_handles['ax_signal_full'] and event.dblclick: # If the click was inside the time course plot
             if 0 <= int(event.xdata) < self.data.shape[0]:
                 self._data_index = int(event.xdata)
                 self.update()
     
     def onpick(self, event):
+        """Single click a projected point."""
         self.pick_event = event
         self._data_index = np.random.choice(event.ind)
         self.update()
@@ -1045,12 +1048,38 @@ class ComponentBrowser(GenericBrowser):
         # self.plot_handles['signal_full'][self._data_index].linewidth = 3
         plt.draw()
     
-    def update_class_text(self):
-        self._class_text.update([f'{k}:{v}' for k,v in self.class_names.items()])
+    def update_class_info_text(self, draw=True):
+        self._class_info_text.update([f'{k}:{v}' for k,v in self.class_names.items()])
+        if draw:
+            plt.draw()
+    
+    def update_colors(self, data_idx=None, draw=True):
+        if data_idx is None:
+            for h_sig_piece, class_label in zip(self.plot_handles['signal_full'], self.classes):
+                h_sig_piece.set_color(class_label.color)
+        else:
+            assert isinstance(data_idx, (list, tuple))
+            for this_data_idx in data_idx:
+                self.plot_handles['signal_full'][this_data_idx].set_color(self.classes[this_data_idx].color)
+        if draw:
+            plt.draw()
 
     def clear_axes(self, event=None):
         self.plot_handles['ax_history_signal'].clear()
         plt.draw()
+    
+    def __call__(self, event):
+        if event.name == 'key_press_event' and event.inaxes == self.plot_handles['ax_signal_full']:
+            if (event.key in self.class_labels_str) and (0 <= int(event.xdata) < self.data.shape[0]):
+                this_data_idx = int(event.xdata)
+                new_label = int(event.key)
+                original_label = self.classes[this_data_idx].original_label
+                if new_label == original_label:
+                    self.classes[this_data_idx].set_auto()
+                else:
+                    self.classes[this_data_idx].set_manual()
+                self.classes[this_data_idx].label = new_label
+                self.update_colors([this_data_idx])
 
 
 class ClassLabel:
@@ -1062,6 +1091,7 @@ class ClassLabel:
         ):
         assert label >= 0
         self._label = label
+        self.original_label = label
         if name is None:
             name = f'Class_{label}'
         self.name = name
@@ -1098,10 +1128,17 @@ class ClassLabel:
             self.color_manual = self.palette[(self._label-1)*2]
         
     def is_auto(self):
-        return self.assignment_type == 'auto'
+        return (self.assignment_type == 'auto')
     
     def is_manual(self):
-        return self.assignment_type == 'manual'
+        return (self.assignment_type == 'manual')
+    
+    def set_auto(self):
+        """Meant for undo-ing manual assignment"""
+        self.assignment_type = 'auto'
+
+    def set_manual(self):
+        self.assignment_type = 'manual'
     
     def add_annotation(self, annot:str):
         self.annotations.append(annot)
