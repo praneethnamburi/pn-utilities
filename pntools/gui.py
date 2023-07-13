@@ -34,7 +34,6 @@ from matplotlib.gridspec import GridSpec
 from pntools import sampled
 
 
-
 CLIP_FOLDER = 'C:\\data\\_clipcollection'
 
 
@@ -851,7 +850,7 @@ class TextView:
         text is an array of strings
         fax is either a figure or an axis handle
         """
-        def rescale(xy, margin=0.01):
+        def rescale(xy, margin=0.03):
             return (1-2*margin)*xy + margin
 
         self.text = self.parse_text(text)
@@ -911,13 +910,18 @@ class SignalBrowserKeyPress(SignalBrowser):
                     pprint(self.event_keys, width=1)
 
 class ComponentBrowser(GenericBrowser):
-    def __init__(self, data, data_transform, labels=None, figure_handle=None, class_names=None):
+    def __init__(self, data, data_transform, labels=None, figure_handle=None, class_names=None, annotation_names=None):
         """
         data is a 2d numpy array with number of signals on dim1, and number of time points on dim2
         data_transform is the transformed data, still a 2d numpy array with number of signals x number of components
             For example, transformed using one of (sklearn.decomposition.PCA, umap.UMAP, sklearn.manifold.TSNE, sklearn.decomposition.FastICA)
         labels are n_signals x 1 array with each entry representing the class of each signal piece. MAKE SURE ALL CLASS LABELS ARE POSITIVE
         class_names is a dictionary, for example {0:'Unclassified', '1:Resonant', '2:NonResonant'}
+
+        This GUI is meant to be used for 
+          - 'corrections', where classes are modified / assigned
+          - 'annotations', where labels or annotations (separate from a class assignment in the sense that each signal belongs exactly to one class, and a signal my have 0 or more annotations)
+
         example - 
             import projects.gaitmusic as gm
             mr = gm.MusicRunning01()
@@ -950,8 +954,12 @@ class ComponentBrowser(GenericBrowser):
         else:
             assert set(class_names.keys()) == set(class_labels)
             self.class_names = class_names
-        
         self.classes = [ClassLabel(label=label, name=self.class_names[label]) for label in self.labels]
+
+        if annotation_names is None:
+            annotation_names = {1:'Representative', 2:'Best', 3:'Noisy', 4:'Worst'}
+        self.annotation_names = annotation_names
+        self.annotation_idx_str = [str(x) for x in self.annotation_names]
 
         self.cid.append(self.figure.canvas.mpl_connect('pick_event', self.onpick))
         self.cid.append(self.figure.canvas.mpl_connect('button_press_event', self.select_signal_piece_dblclick))
@@ -1003,6 +1011,15 @@ class ComponentBrowser(GenericBrowser):
         self._class_info_text = TextView([], self.figure, pos='bottom left')
         self.update_class_info_text()
 
+        self._mode = 'correction' # ('correction' or 'annotation')
+        self._mode_text = TextView([], self.figure, pos='center left')
+        self.update_mode_text()
+        self.add_key_binding('m', self.toggle_mode)
+
+        self._annotation_text = TextView(['', 'Annotation list:']+[f'{k}:{v}' for k,v in self.annotation_names.items()], self.figure, pos='top left')
+
+        self._message = TextView(['Last action : '], self.figure, pos='bottom right')
+
         self.add_key_binding('r', self.clear_axes)
         plt.show(block=False)
 
@@ -1050,9 +1067,23 @@ class ComponentBrowser(GenericBrowser):
         plt.draw()
     
     def update_class_info_text(self, draw=True):
-        self._class_info_text.update([f'{k}:{v}' for k,v in self.class_names.items()])
+        self._class_info_text.update(['Class list:'] + [f'{k}:{v}' for k,v in self.class_names.items()])
         if draw:
             plt.draw()
+    
+    def update_mode_text(self, draw=True):
+        self._mode_text.update([f'mode: {self._mode}'])
+        if draw:
+            plt.draw()
+    
+    def update_message_text(self, text:str, draw=True):
+        self._message.update([text])
+        if draw:
+            plt.draw()
+
+    def toggle_mode(self, event=None): # add key binding to m for switching mode
+        self._mode = {'correction':'annotation', 'annotation':'correction'}[self._mode]
+        self.update_mode_text()
     
     def update_colors(self, data_idx=None, draw=True):
         if data_idx is None:
@@ -1069,23 +1100,50 @@ class ComponentBrowser(GenericBrowser):
                     handle.set_facecolors(fc)
         if draw:
             plt.draw()
+    
+    def update_all(self):
+        self.update()
+        self.update_class_info_text(draw=False)
+        self.update_mode_text(draw=False)
+        self.update_message_text('Default message', draw=False)
+        self.update_colors(draw=False)
+        plt.draw()
 
     def clear_axes(self, event=None):
         self.plot_handles['ax_history_signal'].clear()
         plt.draw()
-    
+
     def __call__(self, event):
-        if event.name == 'key_press_event' and event.inaxes == self.plot_handles['ax_signal_full']:
-            if (event.key in self.class_labels_str) and (0 <= int(event.xdata) < self.data.shape[0]):
-                this_data_idx = int(event.xdata)
-                new_label = int(event.key)
-                original_label = self.classes[this_data_idx].original_label
-                if new_label == original_label:
-                    self.classes[this_data_idx].set_auto()
-                else:
-                    self.classes[this_data_idx].set_manual()
-                self.classes[this_data_idx].label = new_label
-                self.update_colors([this_data_idx])
+        super().__call__(event)
+        if event.name == 'key_press_event' and event.inaxes == self.plot_handles['ax_signal_full'] and (0 <= int(event.xdata) < self.data.shape[0]):
+            this_data_idx = int(event.xdata)
+            if self._mode == 'correction':
+                if (event.key in self.class_labels_str):
+                    new_label = int(event.key)
+                    original_label = self.classes[this_data_idx].original_label
+                    if new_label == original_label:
+                        self.classes[this_data_idx].set_auto()
+                    else:
+                        self.classes[this_data_idx].set_manual()
+                    self.classes[this_data_idx].label = new_label
+                    self.update_colors([this_data_idx])
+            elif self._mode == 'annotation':
+                if event.key in self.annotation_idx_str:
+                    this_annotation = self.annotation_names[int(event.key)]
+                    if this_annotation not in self.classes[this_data_idx].annotations:
+                        self.classes[this_data_idx].annotations.append(this_annotation)
+                        self.update_message_text(f'Adding annotation {this_annotation} to signal number {this_data_idx}')
+    
+    def classlabels_to_dict(self):
+        fields_to_save = ('label', 'name', 'assignment_type', 'annotations', 'original_label')
+        ret = {}
+        for class_idx, class_label in enumerate(self.classes):
+            ret[class_idx] = {fld:getattr(class_label, fld)for fld in fields_to_save}
+        return ret
+    
+    def set_classlabels(self, classlabels_dict):
+        assert set(classlabels_dict.keys()) == set(range(self.n_signals))
+        self.classes = [ClassLabel(**this_label) for this_label in classlabels_dict.values()]
 
 
 class ClassLabel:
@@ -1093,11 +1151,15 @@ class ClassLabel:
             label:int,                      # class label (0 - unclassified, 1 - non-resonant, 2 - resonant, etc.)
             name:str = None,                # name of the class
             assignment_type:str = 'auto',   # class label was assigned automatically ('auto') or manually ('manual')
-            annotations:list = None         # for adding annotations to a given class instance
+            annotations:list = None,        # for adding annotations to a given class instance
+            original_label:int = None,
         ):
         assert label >= 0
-        self._label = label
-        self.original_label = label
+        self._label = int(label)
+        if original_label is None:
+            self.original_label = label
+        else:
+            self.original_label = int(original_label)
         if name is None:
             name = f'Class_{label}'
         self.name = name
@@ -1110,6 +1172,9 @@ class ClassLabel:
 
         if annotations is None:
             self.annotations = []
+        else:
+            assert isinstance(annotations, list)
+            self.annotations = annotations
 
     @property
     def color(self):
@@ -1148,6 +1213,7 @@ class ClassLabel:
     
     def add_annotation(self, annot:str):
         self.annotations.append(annot)
+
 
 ### -------- Demonstration/example classes
 class ButtonFigureDemo(plt.Figure):
