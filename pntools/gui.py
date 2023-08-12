@@ -15,6 +15,7 @@ Classes:
 import io
 import json
 import os
+import inspect
 from datetime import timedelta, datetime
 from pathlib import Path
 
@@ -286,7 +287,12 @@ class GenericBrowser:
         # print(event.__dict__) # for debugging
         if event.name == 'key_press_event':
             if event.key in self._keypressdict:
-                self._keypressdict[event.key][0]() # this may or may not redraw everything
+                f = self._keypressdict[event.key][0]
+                argspec = inspect.getfullargspec(f)[0]
+                if len(argspec) == 2 and argspec[1] == 'event':
+                    f(event)
+                else:
+                    f() # this may or may not redraw everything
             if event.key in self._idx_memory_slots:
                 self.memory_slot_update(event.key)
         elif event.name == 'close_event': # perform cleanup
@@ -910,7 +916,7 @@ class SignalBrowserKeyPress(SignalBrowser):
                     pprint(self.event_keys, width=1)
 
 class ComponentBrowser(GenericBrowser):
-    def __init__(self, data, data_transform, labels=None, figure_handle=None, class_names=None, annotation_names=None):
+    def __init__(self, data, data_transform, labels=None, figure_handle=None, class_names=None, desired_class_names=None, annotation_names=None):
         """
         data is a 2d numpy array with number of signals on dim1, and number of time points on dim2
         data_transform is the transformed data, still a 2d numpy array with number of signals x number of components
@@ -955,6 +961,10 @@ class ComponentBrowser(GenericBrowser):
             assert set(class_names.keys()) == set(class_labels)
             self.class_names = class_names
         self.classes = [ClassLabel(label=label, name=self.class_names[label]) for label in self.labels]
+
+        if desired_class_names is None:
+            desired_class_names = self.class_names
+        self.desired_class_names = desired_class_names
 
         if annotation_names is None:
             annotation_names = {1:'Representative', 2:'Best', 3:'Noisy', 4:'Worst'}
@@ -1020,6 +1030,9 @@ class ComponentBrowser(GenericBrowser):
 
         self._message = TextView(['Last action : '], self.figure, pos='bottom right')
 
+        self._desired_class_info_text = TextView([], self.figure, pos='bottom center')
+        self.update_desired_class_info_text()
+
         self.add_key_binding('r', self.clear_axes)
         plt.show(block=False)
 
@@ -1068,6 +1081,11 @@ class ComponentBrowser(GenericBrowser):
     
     def update_class_info_text(self, draw=True):
         self._class_info_text.update(['Class list:'] + [f'{k}:{v}' for k,v in self.class_names.items()])
+        if draw:
+            plt.draw()
+    
+    def update_desired_class_info_text(self, draw=True):
+        self._desired_class_info_text.update(['Desired class list:'] + [f'{k}:{v}' for k,v in self.desired_class_names.items()])
         if draw:
             plt.draw()
     
