@@ -470,6 +470,7 @@ class GenericBrowser:
             else:
                 new_lim = (lim1-inc, lim2-inc)
             {'x': this_ax.set_xlim, 'y': this_ax.set_ylim}[pan_ax](new_lim)
+        plt.draw()
         self.update_without_clear() # panning is pointless if update clears the axis!!
 
 
