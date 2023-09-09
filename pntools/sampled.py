@@ -944,7 +944,8 @@ def uniform_resample(time, sig, sr, t_min=None, t_max=None):
         pn.sampled.Data
     """
     assert len(time) == len(sig)
-    assert np.ndim(sig) == 1
+    time = np.array(time)
+    sig = np.array(sig)
 
     if t_min is None: t_min = time[0]
     if t_max is None: t_max = time[-1]
@@ -953,7 +954,12 @@ def uniform_resample(time, sig, sr, t_min=None, t_max=None):
     t_max = t_min + (n_samples-1)/sr
 
     t_proc = np.linspace(t_min, t_max, n_samples)
-    sig_proc = np.interp(t_proc, time, sig)
+    if np.ndim(sig) == 1:
+        sig_proc = np.interp(t_proc, time, sig)
+        return Data(sig_proc, sr, t0=t_min)
+    sig_proc = np.zeros((len(t_proc), sig.shape[-1]))
+    for col_count in range(sig.shape[-1]):
+        sig_proc[:, col_count] = np.interp(t_proc, time, sig[:, col_count])
     return Data(sig_proc, sr, t0=t_min)
 
 
