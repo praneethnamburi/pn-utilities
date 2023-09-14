@@ -1245,7 +1245,9 @@ if not BLENDER_MODE:
         ax.legend(loc='center left', bbox_to_anchor=(1, 0.5))
 
     def scatter_bar(x, y, ax=None, yl=None, xcat=None, **kwargs):
-        """Make a scatter plot with bars"""
+        """Make a scatter plot with bars. 
+        DO NOT USE THIS DIRECTLY. USE scatter_bar_cols.
+        """
         color_scatter = kwargs.get('color_scatter', 'dodgerblue')
         color_bar = kwargs.get('color_bar', 'darkblue')
         if xcat is None:
@@ -1309,6 +1311,7 @@ if not BLENDER_MODE:
             f, ax = plt.subplots()
             plt_show = True
         else:
+            f = ax.figure
             plt_show = False
         f.set_size_inches(*kwargs.get('size', (3.75, 6)))
         
