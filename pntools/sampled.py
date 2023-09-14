@@ -712,6 +712,14 @@ class Data: # Signal processing
         else:
             meta = None
         return self.__class__(proc_sig, sr=new_sr, axis=self.axis, history=self._history+[('resample', new_sr)], t0=self._t0, meta=meta)
+    
+    def smooth(self, win_size=0.5):
+        """Moving average smoothing while preserving the number of samples in the signal"""
+        stride = round(win_size*self.sr)
+        proc_sig = np.lib.stride_tricks.sliding_window_view(self._sig, stride, axis=self.axis).mean(axis=-1)
+        t_start_offset = (stride-1)/(2*self.sr)
+        return self.__class__(proc_sig, sr=self.sr, axis=self.axis, history=self._history+[('moving average with stride', stride)], t0=self._t0+t_start_offset, meta=self.meta)
+
 
 class DataList(list):
     def __call__(self, **kwargs):
