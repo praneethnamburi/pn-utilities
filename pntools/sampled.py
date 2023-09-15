@@ -359,10 +359,10 @@ class Data: # Signal processing
 
         assert isinstance(col, int) and col < len(self)
         slc = [slice(None)]*self._sig.ndim
-        slc[(self.axis+1)%self._sig.ndim] = col
+        slc[self.get_signal_axis()] = col
         return self._sig[tuple(slc)] # not converting slc to tuple threw a FutureWarning
 
-    def _clone(self, proc_sig, his_append=None):
+    def _clone(self, proc_sig, his_append=None, **kwargs):
         if his_append is None:
             his = self._history # only useful when cloning without manipulating the data, e.g. returning a subset of columns
         else:
@@ -372,7 +372,9 @@ class Data: # Signal processing
             meta = self.meta
         else:
             meta = None
-        return self.__class__(proc_sig, self.sr, self.axis, his, self._t0, meta)
+        axis = kwargs.pop('axis', self.axis)
+        t0 = kwargs.pop('t0', self._t0)
+        return self.__class__(proc_sig, self.sr, axis, his, t0, meta)
 
     def analytic(self):
         proc_sig = hilbert(self._sig, axis=self.axis)
@@ -659,13 +661,50 @@ class Data: # Signal processing
         onset_samples, offset_samples = onoff_samples(self._sig)
         return [self.t[x] for x in onset_samples], [self.t[x] for x in offset_samples]
 
-    def fft(self):
-        N = len(self)
-        T = 1/self.sr
-        f = fftfreq(N, T)[:N//2]
-        amp = 2.0/N * np.abs(fft(self._sig)[0:N//2])
-        return f, amp
+    def get_signal_axis(self):
+        return (self.axis+1)%self().ndim
     
+    def n_signals(self):
+        return self().shape[self.get_signal_axis()]
+
+    def split_to_1d(self):
+        if self().ndim == 1:
+            return [self]
+        return [self._clone(self(col), his_append=('split', col), axis=0) for col in range(self.n_signals())]
+    
+    def fft(self, win_size=None, win_inc=None):
+        T = 1/self.sr
+        if win_size is None and win_inc is None:
+            N = len(self)
+            f = fftfreq(N, T)[:N//2]
+            if np.ndim(self._sig) == 1:
+                amp = 2.0/N * np.abs(fft(self._sig)[0:N//2])
+            else:
+                amp = np.array([2.0/N * np.abs(fft(s())[0:N//2]) for s in self.split_to_1d()]).T
+            return f, amp
+        
+        # do a sliding window fft
+        if win_inc is None:
+            win_inc = win_size # no overlap
+            
+        rw = self.make_running_win(win_size, win_inc)
+        if np.ndim(self._sig) == 1:
+            amp_all = []
+            for this_rw in rw():
+                sig = self[this_rw]
+                N = len(sig)
+                this_amp = 2.0/N * np.abs(fft(sig())[0:N//2])
+                amp_all.append(this_amp)
+            f = fftfreq(N, T)[:N//2]
+            amp = np.mean(amp_all, axis=0)
+            return f, amp
+        if np.ndim(self._sig) == 2:
+            amp_all = []
+            for sig in self.split_to_1d():
+                f, amp = sig.fft(win_size, win_inc)
+                amp_all.append(amp)
+            return f, np.array(amp_all).T
+        
     def diff(self):
         if self._sig.ndim == 2:
             if self.axis == 1:
