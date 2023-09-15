@@ -704,6 +704,11 @@ class Data: # Signal processing
                 f, amp = sig.fft(win_size, win_inc)
                 amp_all.append(amp)
             return f, np.array(amp_all).T
+    
+    def fft_as_sampled(self, *args, **kwargs):
+        f, amp = self.fft(*args, **kwargs)
+        df = (f[-1] - f[0])/(len(f)-1)
+        return Data(amp, sr=1/df) # think of it as sr number of samples per Hz (instead of samples per second)
         
     def diff(self):
         if self._sig.ndim == 2:
