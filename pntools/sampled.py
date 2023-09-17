@@ -730,8 +730,19 @@ class Data: # Signal processing
         return Data(np.linalg.norm(self._sig, axis=(self.axis+1)%2), self.sr, history=self._history+[('magnitude', 'None')])
 
     def apply(self, func, *args, **kwargs):
+        """apply a function func along the time axis"""
         try:
             kwargs['axis'] = self.axis
+            proc_sig = func(self._sig, *args, **kwargs)
+        except TypeError:
+            kwargs.pop('axis')
+            proc_sig = func(self._sig, *args, **kwargs)
+        return self._clone(proc_sig, ('apply', {'func': func, 'args': args, 'kwargs': kwargs}))
+    
+    def apply_along_signals(self, func, *args, **kwargs):
+        """apply a function func along the signal axis"""
+        try:
+            kwargs['axis'] = self.get_signal_axis()
             proc_sig = func(self._sig, *args, **kwargs)
         except TypeError:
             kwargs.pop('axis')
