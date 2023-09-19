@@ -1310,10 +1310,10 @@ if not BLENDER_MODE:
         if ax is None:
             f, ax = plt.subplots()
             plt_show = True
+            f.set_size_inches(*kwargs.get('size', (3.75, 6)))
         else:
             f = ax.figure
             plt_show = False
-        f.set_size_inches(*kwargs.get('size', (3.75, 6)))
         
         x_buffer = (xcat[-1] - xcat[0])*kwargs.get('x_buffer', 0.5)
         ax.set_xlim(xcat[0]-x_buffer, xcat[-1]+x_buffer)
