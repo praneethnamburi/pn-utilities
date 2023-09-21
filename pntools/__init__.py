@@ -1211,6 +1211,20 @@ def scale_data(d:np.ndarray, d_lim:tuple=None, clip:bool=True) -> np.ndarray: # 
         d[d > d_lim[1]] = np.nan
     return (d - do)/dw
 
+def find_nearest(array, value):
+    array = np.asarray(array)
+    idx = (np.abs(array - value)).argmin()
+    val = array[idx]
+    return idx, val
+
+def find_nearest_idx(array, value):
+    """Index of the nearest value in the array"""
+    array = np.asarray(array)
+    return (np.abs(array - value)).argmin()
+
+def find_nearest_val(array, value):
+    return array[find_nearest_idx(array, value)]
+
 ## Statistics
 def p_str(p_val, sep=''):
     """
@@ -1238,6 +1252,9 @@ if not BLENDER_MODE:
     import matplotlib.pyplot as plt
     from scipy import stats as sstats
     mpl.rcParams['lines.linewidth'] = 0.75
+
+    PLOT_COLORS = plt.rcParams['axes.prop_cycle'].by_key()['color']
+        
     def format_legend(ax):
         """Set the legend labels using 'label' field in plot."""
         box = ax.get_position()
@@ -1248,8 +1265,10 @@ if not BLENDER_MODE:
         """Make a scatter plot with bars. 
         DO NOT USE THIS DIRECTLY. USE scatter_bar_cols.
         """
-        color_scatter = kwargs.get('color_scatter', 'dodgerblue')
-        color_bar = kwargs.get('color_bar', 'darkblue')
+        scatter_color = kwargs.get('scatter_color', 'dodgerblue')
+        bar_color = kwargs.get('bar_color', 'darkblue')
+        bar_alpha = kwargs.get('bar_alpha', 1)
+        scatter_alpha = kwargs.get('scatter_alpha', 1)
         if xcat is None:
             x = np.asarray(x)
             y = np.asarray(y)
@@ -1265,20 +1284,24 @@ if not BLENDER_MODE:
         else:
             plt_show = False
         
-        ax.scatter(x, y, s=80, color=color_scatter, facecolors='none')
+        ax.scatter(x, y, s=80, color=scatter_color, facecolors='none', alpha=scatter_alpha)
         if yl is None:
             yl = ax.get_ylim()
         else:
             ax.set_ylim(yl)
         x_mul = np.diff(ax.get_xlim())
-        for this_x in xcat:
+        for cnt, this_x in enumerate(xcat):
+            if isinstance(bar_color, list) and len(bar_color) == len(xcat):
+                this_color_bar = bar_color[cnt]
+            else:
+                this_color_bar = bar_color
             this_y = y[x==this_x]
             mu = np.nanmean(this_y)
             n = np.sum(~np.isnan(this_y))
             sem = np.nanstd(this_y)/np.sqrt(n)
-            ax.plot([this_x-0.05*x_mul, this_x-0.05*x_mul, this_x+0.05*x_mul, this_x+0.05*x_mul], [yl[0], mu, mu, yl[0]], color=color_bar, linewidth=1.2)
-            ax.plot([this_x, this_x], [mu, mu+sem], color=color_bar, linewidth=1.2)
-            ax.plot([this_x-0.02*x_mul, this_x+0.02*x_mul], [mu+sem, mu+sem], color=color_bar, linewidth=1.2)
+            ax.plot([this_x-0.05*x_mul, this_x-0.05*x_mul, this_x+0.05*x_mul, this_x+0.05*x_mul], [yl[0], mu, mu, yl[0]], color=this_color_bar, linewidth=1.2, alpha=bar_alpha)
+            ax.plot([this_x, this_x], [mu, mu+sem], color=this_color_bar, linewidth=1.2, alpha=bar_alpha)
+            ax.plot([this_x-0.02*x_mul, this_x+0.02*x_mul], [mu+sem, mu+sem], color=this_color_bar, linewidth=1.2, alpha=bar_alpha)
         ax.set_xticks(xcat, xcat)
         if plt_show:
             plt.show(block=False)
@@ -1300,11 +1323,16 @@ if not BLENDER_MODE:
             this_col_data = np.asarray(this_col_data)
             this_col_data = this_col_data[~np.isnan(this_col_data)]
             col_data[col_count] = list(this_col_data)
+        color_palette = kwargs.get('color_palette', PLOT_COLORS)
         x = []
         y = []
+        scatter_color = []
+        bar_color = []
         for col_num in range(len(col_names)):
             y += col_data[col_num]
             x += [col_num]*len(col_data[col_num])
+            scatter_color += [color_palette[col_num]]*len(col_data[col_num])
+            bar_color.append(color_palette[col_num])
         xcat = np.unique(np.array(x)[~np.isnan(x)])
 
         if ax is None:
@@ -1317,7 +1345,7 @@ if not BLENDER_MODE:
         
         x_buffer = (xcat[-1] - xcat[0])*kwargs.get('x_buffer', 0.5)
         ax.set_xlim(xcat[0]-x_buffer, xcat[-1]+x_buffer)
-        ax = scatter_bar(x, y, xcat=xcat, ax=ax, yl=yl, **kwargs)
+        ax = scatter_bar(x, y, xcat=xcat, ax=ax, yl=yl, scatter_color=scatter_color, bar_color=bar_color, **kwargs)
         if kwargs.get('show_n', True):
             n_str = lambda col_data : f'(n={len(col_data)})'
         else:
