@@ -1289,6 +1289,7 @@ if not BLENDER_MODE:
             yl = ax.get_ylim()
         else:
             ax.set_ylim(yl)
+        bar_start = kwargs.get('bar_start', yl[0])
         x_mul = np.diff(ax.get_xlim())
         for cnt, this_x in enumerate(xcat):
             if isinstance(bar_color, list) and len(bar_color) == len(xcat):
@@ -1299,7 +1300,7 @@ if not BLENDER_MODE:
             mu = np.nanmean(this_y)
             n = np.sum(~np.isnan(this_y))
             sem = np.nanstd(this_y)/np.sqrt(n)
-            ax.plot([this_x-0.05*x_mul, this_x-0.05*x_mul, this_x+0.05*x_mul, this_x+0.05*x_mul], [yl[0], mu, mu, yl[0]], color=this_color_bar, linewidth=1.2, alpha=bar_alpha)
+            ax.plot([this_x-0.05*x_mul, this_x-0.05*x_mul, this_x+0.05*x_mul, this_x+0.05*x_mul], [bar_start, mu, mu, bar_start], color=this_color_bar, linewidth=1.2, alpha=bar_alpha)
             ax.plot([this_x, this_x], [mu, mu+sem], color=this_color_bar, linewidth=1.2, alpha=bar_alpha)
             ax.plot([this_x-0.02*x_mul, this_x+0.02*x_mul], [mu+sem, mu+sem], color=this_color_bar, linewidth=1.2, alpha=bar_alpha)
         ax.set_xticks(xcat, xcat)
