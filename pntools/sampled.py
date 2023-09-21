@@ -672,15 +672,18 @@ class Data: # Signal processing
             return [self]
         return [self._clone(self(col), his_append=('split', col), axis=0) for col in range(self.n_signals())]
     
-    def fft(self, win_size=None, win_inc=None):
+    def fft(self, win_size=None, win_inc=None, zero_mean=False):
         T = 1/self.sr
         if win_size is None and win_inc is None:
             N = len(self)
             f = fftfreq(N, T)[:N//2]
-            if np.ndim(self._sig) == 1:
-                amp = 2.0/N * np.abs(fft(self._sig)[0:N//2])
+            sig = self._clone(self._sig)
+            if zero_mean:
+                sig = sig.shift_baseline()
+            if np.ndim(sig) == 1:
+                amp = 2.0/N * np.abs(fft(sig)[0:N//2])
             else:
-                amp = np.array([2.0/N * np.abs(fft(s())[0:N//2]) for s in self.split_to_1d()]).T
+                amp = np.array([2.0/N * np.abs(fft(s())[0:N//2]) for s in sig.split_to_1d()]).T
             return f, amp
         
         # do a sliding window fft
@@ -692,6 +695,8 @@ class Data: # Signal processing
             amp_all = []
             for this_rw in rw():
                 sig = self[this_rw]
+                if zero_mean:
+                    sig = sig.shift_baseline()
                 N = len(sig)
                 this_amp = 2.0/N * np.abs(fft(sig())[0:N//2])
                 amp_all.append(this_amp)
@@ -701,7 +706,7 @@ class Data: # Signal processing
         if np.ndim(self._sig) == 2:
             amp_all = []
             for sig in self.split_to_1d():
-                f, amp = sig.fft(win_size, win_inc)
+                f, amp = sig.fft(win_size, win_inc, zero_mean)
                 amp_all.append(amp)
             return f, np.array(amp_all).T
     
