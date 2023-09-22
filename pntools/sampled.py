@@ -4,7 +4,7 @@ Tools for working with sampled data
 
 import collections
 import numpy as np
-from scipy.signal import hilbert, firwin, filtfilt, butter, resample, iirnotch
+from scipy.signal import hilbert, firwin, filtfilt, butter, resample, iirnotch, welch
 from scipy.fft import fft, fftfreq
 from scipy.interpolate import interp1d
 
@@ -662,15 +662,24 @@ class Data: # Signal processing
         return [self.t[x] for x in onset_samples], [self.t[x] for x in offset_samples]
 
     def get_signal_axis(self):
+        if self().ndim == 1:
+            return None # there is no signal axis for a 1d signal
         return (self.axis+1)%self().ndim
     
     def n_signals(self):
+        if self().ndim == 1:
+            return 1
         return self().shape[self.get_signal_axis()]
 
     def split_to_1d(self):
         if self().ndim == 1:
             return [self]
         return [self._clone(self(col), his_append=('split', col), axis=0) for col in range(self.n_signals())]
+    
+    def transpose(self):
+        if self().ndim == 1:
+            return self # nothing done
+        return self._clone(self._sig.T, axis=self.get_signal_axis())
     
     def fft(self, win_size=None, win_inc=None, zero_mean=False):
         T = 1/self.sr
@@ -713,7 +722,30 @@ class Data: # Signal processing
     def fft_as_sampled(self, *args, **kwargs):
         f, amp = self.fft(*args, **kwargs)
         df = (f[-1] - f[0])/(len(f)-1)
-        return Data(amp, sr=1/df) # think of it as sr number of samples per Hz (instead of samples per second)
+        return Data(amp, sr=1/df, t0=f[0]) # think of it as sr number of samples per Hz (instead of samples per second)
+    
+    def psd(self, win_size=5.0, win_inc=None, **kwargs): 
+        """compute the power spectral density using the welch method"""
+        kwargs_default = dict(nperseg=round(self.sr*win_size), scaling='density')
+        kwargs = kwargs_default | kwargs
+        if win_inc is not None:
+            kwargs['noverlap'] = kwargs['nperseg'] - round(self.sr*win_inc)
+        else:
+            kwargs['noverlap'] = None
+        if self().ndim == 1:
+            f, Pxx = welch(self._sig, self.sr, **(kwargs_default | kwargs))
+            return f, Pxx
+        Pxx = []
+        for s in self.split_to_1d():
+            f, this_Pxx = welch(s._sig, s.sr, **kwargs)
+            Pxx.append(this_Pxx)
+        Pxx = np.vstack(Pxx).T
+        return f, Pxx
+
+    def psd_as_sampled(self, *args, **kwargs):
+        f, Pxx = self.psd(*args, **kwargs)
+        df = (f[-1] - f[0])/(len(f)-1)
+        return Data(Pxx, sr=1/df, t0=f[0])
         
     def diff(self):
         if self._sig.ndim == 2:
@@ -752,7 +784,15 @@ class Data: # Signal processing
         except TypeError:
             kwargs.pop('axis')
             proc_sig = func(self._sig, *args, **kwargs)
-        return self._clone(proc_sig, ('apply', {'func': func, 'args': args, 'kwargs': kwargs}))
+        return self._clone(proc_sig, ('apply_along_signals', {'func': func, 'args': args, 'kwargs': kwargs}))
+    
+    def apply_to_each_signal(self, func, *args, **kwargs):
+        """Apply a function to each signal (if self is a collection of signals) separately, and put it back together"""
+        assert self().ndim == 2
+        proc_sig = np.vstack([func(s._sig, *args, **kwargs) for s in self.split_to_1d()])
+        if self.axis == 0:
+            proc_sig = proc_sig.T
+        return self._clone(proc_sig, ('apply_to_each_signal', {'func': func, 'args': args, 'kwargs': kwargs}))
     
     def regress(self, ref_sig):
         """Regress a reference signal out of the current signal"""
