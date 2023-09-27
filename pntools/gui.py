@@ -528,9 +528,10 @@ class PlotBrowser(GenericBrowser):
         self.set_default_keybindings()
         self.buttons.add(text='Auto limits', type_='Toggle', action_func=self.update, start_state=False)
         self.show_memory_slots()
-        self.update() # draw the first instance
-        self.reset_axes()
-        plt.show(block=False)
+        if self.__class__.__name__ == 'PlotBrowser': # if an inherited class is accessing this, then don't run the update function here
+            self.update() # draw the first instance
+            self.reset_axes()
+            plt.show(block=False)
         # add selectors after drawing!
         try:
             s0 = self.selectors.add(list(self.plot_handles.values())[0])
