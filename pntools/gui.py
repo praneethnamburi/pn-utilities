@@ -266,6 +266,67 @@ class MemorySlots:
         if self._memtext is not None:
             self._memtext._text.remove()
         self._memtext = None
+    
+    def is_enabled(self):
+        return bool(self._idx)
+
+class StateVariable:
+    def __init__(self, name:str, states:list):
+        self.name = name
+        self.states = list(states)
+        self._current_state_idx = 0
+    
+    @property
+    def current_state(self):
+        return self.states[self._current_state_idx]
+    
+    def n_states(self):
+        return len(self.states)
+    
+    def cycle(self):
+        self._current_state_idx = (self._current_state_idx+1)%self.n_states()
+    
+    def set_state(self, state):
+        if isinstance(state, int):
+            assert 0 <= state < self.n_states()
+            self._current_state_idx = state
+        if isinstance(state, str):
+            assert state in self.states
+            self._current_state_idx = self.states.index(state)
+
+class StateVariables:
+    def __init__(self, parent):
+        self._list : list[StateVariable] = []
+        self.parent = parent
+        self._text = None
+
+    def __len__(self):
+        return len(self._list)
+    
+    def __getitem__(self, key):
+        """return the state variable by name key"""
+        assert key in self.names
+        return {x.name:x for x in self._list}[key]
+    
+    @property
+    def names(self):
+        return [x.name for x in self._list]
+    
+    def asdict(self):
+        return {x.name:x.states for x in self._list}
+    
+    def add(self, name:str, states:list):
+        assert name not in self.names
+        self._list.append(StateVariable(name, states))
+    
+    def _get_display_text(self):
+        return ['State variables:'] + [f'{x.name} - {x.current_state}' for x in self._list]
+    
+    def show(self, pos='bottom right'):
+        self._text = TextView(self._get_display_text(), fax=self.parent.figure, pos=pos)
+
+    def update_display(self):
+        self._text.update(self._get_display_text())
 
 class GenericBrowser:
     """
@@ -302,6 +363,7 @@ class GenericBrowser:
         self.buttons = Buttons(parent=self)
         self.selectors = Selectors(parent=self)
         self.memoryslots = MemorySlots(parent=self)
+        self.statevariables = StateVariables(parent=self)
 
         # for cleanup
         self.cid = []
