@@ -222,6 +222,50 @@ class Selectors:
         self._lasso_list.append(ls)
         return ls
         
+class MemorySlots:
+    def __init__(self, parent):
+        self._idx = self.initialize()
+        self._memtext = None
+        self.parent = parent
+
+    @staticmethod
+    def initialize():
+        return {str(k):None for k in range(1, 10)}
+
+    def disable(self):
+        self._idx = {}
+    
+    def enable(self):
+        self._idx = self.initialize()
+
+    def show(self, pos='bottom left'):
+        self._memtext = TextView(self._idx, fax=self.parent.figure, pos=pos)
+    
+    def update(self, key):
+        """
+        memory slot handling - Initiate when None, Go to the slot if it exists, frees slot if pressed when it exists
+        key is the event.key triggered by a callback
+        """
+        if self._idx[key] is None:
+            self._idx[key] = self.parent._current_idx
+            self.update_display()
+        elif self._idx[key] == self.parent._current_idx:
+            self._idx[key] = None
+            self.update_display()
+        else:
+            self.parent._current_idx = self._idx[key]
+            self.parent.update()
+    
+    def update_display(self):
+        """Refresh memory slot text if it is not hidden"""
+        if self._memtext is not None:
+            self._memtext.update(self._idx)
+
+    def hide(self):
+        """Hide the memory slot text"""
+        if self._memtext is not None:
+            self._memtext._text.remove()
+        self._memtext = None
 
 class GenericBrowser:
     """
@@ -254,12 +298,10 @@ class GenericBrowser:
         # tracking variable
         self._current_idx = 0
 
-        # tracking variable memory slots
-        self._idx_memory_slots = self.initialize_memory_slots()
-        self._memtext = None
         self._keybindingtext = None
         self.buttons = Buttons(parent=self)
         self.selectors = Selectors(parent=self)
+        self.memoryslots = MemorySlots(parent=self)
 
         # for cleanup
         self.cid = []
@@ -267,10 +309,10 @@ class GenericBrowser:
         self.cid.append(self.figure.canvas.mpl_connect('close_event', self))
     
     def update(self): # extended classes are expected to implement their update function!
-        self.update_memory_slot_display()
+        self.memoryslots.update_display()
     
     def update_without_clear(self):
-        self.update_memory_slot_display()
+        self.memoryslots.update_display()
         # I did this for browsers that clear the axis each time! Those classes will need to re-implement this method
 
     def mpl_remove_bindings(self, key_list):
@@ -293,8 +335,8 @@ class GenericBrowser:
                     f(event)
                 else:
                     f() # this may or may not redraw everything
-            if event.key in self._idx_memory_slots:
-                self.memory_slot_update(event.key)
+            if event.key in self.memoryslots._idx:
+                self.memoryslots.update(event.key)
         elif event.name == 'close_event': # perform cleanup
             self.cleanup()
     
@@ -314,45 +356,6 @@ class GenericBrowser:
     def __len__(self):
         if hasattr(self, 'data'): # otherwise returns None
             return len(self.data)
-    
-    def memory_slot_update(self, key):
-        """
-        memory slot handling - Initiate when None, Go to the slot if it exists, frees slot if pressed when it exists
-        key is the event.key triggered by a callback
-        """
-        if self._idx_memory_slots[key] is None:
-            self._idx_memory_slots[key] = self._current_idx
-            self.update_memory_slot_display()
-        elif self._idx_memory_slots[key] == self._current_idx:
-            self._idx_memory_slots[key] = None
-            self.update_memory_slot_display()
-        else:
-            self._current_idx = self._idx_memory_slots[key]
-            self.update()
-
-    @staticmethod
-    def initialize_memory_slots():
-        return {str(k):None for k in range(1, 10)}
-
-    def disable_memory_slots(self):
-        self._idx_memory_slots = {}
-    
-    def enable_memory_slots(self):
-        self._idx_memory_slots = self.initialize_memory_slots()
-
-    def show_memory_slots(self, pos='bottom left'):
-        self._memtext = TextView(self._idx_memory_slots, fax=self.figure, pos=pos)
-    
-    def update_memory_slot_display(self):
-        """Refresh memory slot text if it is not hidden"""
-        if self._memtext is not None:
-            self._memtext.update(self._idx_memory_slots)
-
-    def hide_memory_slots(self):
-        """Hide the memory slot text"""
-        if self._memtext is not None:
-            self._memtext._text.remove()
-        self._memtext = None
 
     def reset_axes(self, event=None): # event in case it is used as a callback function
         """Reframe data within matplotlib axes."""
@@ -527,7 +530,7 @@ class PlotBrowser(GenericBrowser):
         # initialize
         self.set_default_keybindings()
         self.buttons.add(text='Auto limits', type_='Toggle', action_func=self.update, start_state=False)
-        self.show_memory_slots()
+        self.memoryslots.show()
         if self.__class__.__name__ == 'PlotBrowser': # if an inherited class is accessing this, then don't run the update function here
             self.update() # draw the first instance
             self.reset_axes()
@@ -545,17 +548,17 @@ class PlotBrowser(GenericBrowser):
     def update(self, event=None): # event = None lets this function be attached as a callback
         if self.setup_func is None:
             self.figure.clear() # redraw the entire figure contents each time, NOT recommended
-            self.show_memory_slots()
+            self.memoryslots.show()
             self.plot_func(self.get_current_data(), self.figure, **self.plot_kwargs)
         else:
-            self.update_memory_slot_display()
+            self.memoryslots.update_display()
             self.plot_func(self.get_current_data(), self.plot_handles, **self.plot_kwargs)
         if self.buttons['Auto limits'].state: # is True
             self.reset_axes()
         plt.draw()
     
     def udpate_without_clear(self):
-        self.update_memory_slot_display()
+        self.memoryslots.update_display()
         plt.draw()
 
 
@@ -626,7 +629,7 @@ class VideoBrowser(GenericBrowser):
         
         self.set_default_keybindings()
         self.add_key_binding('e', self.extract_clip)
-        self.show_memory_slots(pos='bottom left')
+        self.memoryslots.show(pos='bottom left')
 
         if self.__class__.__name__ == 'VideoBrowser': # if an inherited class is accessing this, then don't run the update function here
             plt.show(block=False)
@@ -641,9 +644,9 @@ class VideoBrowser(GenericBrowser):
     def extract_clip(self, start_frame=None, end_frame=None, fname_out=None, out_rate=None):
         #TODO: For musicrunning, grab the corresponding audio and add the audio track to the video clip?
         if start_frame is None:
-            start_frame = self._idx_memory_slots['1']
+            start_frame = self.memoryslots._idx['1']
         if end_frame is None:
-            end_frame = self._idx_memory_slots['2']
+            end_frame = self.memoryslots._idx['2']
         assert end_frame > start_frame
         start_time = float(start_frame)/self.fps
         end_time = float(end_frame)/self.fps
@@ -689,7 +692,7 @@ class VideoPlotBrowser(GenericBrowser):
         self.set_default_keybindings()
         self.add_key_binding('e', self.extract_clip)
         self._len = len(self.video_data)
-        self.show_memory_slots(pos='bottom left')
+        self.memoryslots.show(pos='bottom left')
 
         self.figure.canvas.mpl_connect('button_press_event', self.onclick)
         
@@ -751,9 +754,9 @@ class VideoPlotBrowser(GenericBrowser):
         import subprocess
         import shutil
         if start_frame is None:
-            start_frame = self._idx_memory_slots['1']
+            start_frame = self.memoryslots._idx['1']
         if end_frame is None:
-            end_frame = self._idx_memory_slots['2']
+            end_frame = self.memoryslots._idx['2']
         assert end_frame > start_frame
         if sav_dir is None:
             sav_dir = os.path.join(CLIP_FOLDER, datetime.now().strftime("%Y%m%d_%H%M%S"))
@@ -786,8 +789,8 @@ class VideoPointAnnotator(VideoBrowser):
     """
     def __init__(self, vid_name, titlefunc=None, figure_handle=None):
         super().__init__(vid_name, titlefunc, figure_handle)
-        self.hide_memory_slots()
-        self.disable_memory_slots()
+        self.memoryslots.hide()
+        self.memoryslots.disable()
 
         self.fname_annotations = os.path.join(Path(self.fname).parent, Path(self.fname).stem + '_annotations.json')
         self.annotations = self.load_annotations()
@@ -1018,7 +1021,7 @@ class ComponentBrowser(GenericBrowser):
         this_ylim = self.plot_handles['ax_signal_full'].get_ylim()
         for x_pos in np.r_[:self.n_signals+1]: # separators between signals
             self.plot_handles['ax_signal_full'].plot([x_pos]*2, this_ylim, 'k', linewidth=0.2)
-        self.disable_memory_slots()
+        self.memoryslots.disable()
         
         self._class_info_text = TextView([], self.figure, pos='bottom left')
         self.update_class_info_text()
