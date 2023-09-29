@@ -18,6 +18,8 @@ from copy import deepcopy
 from pathlib import Path
 from timeit import default_timer as timer
 
+import pandas as pd
+
 if os.name == 'nt':
     import multiprocess
 import numpy as np
@@ -1225,6 +1227,17 @@ def find_nearest_idx(array, value):
 def find_nearest_val(array, value):
     return array[find_nearest_idx(array, value)]
 
+class Mapping:
+    """Create a dictionary map between any two columns of a dataframe"""
+    def __init__(self, df:pd.DataFrame):
+        self.df = df
+    
+    def __call__(self, left_col_name:str, right_col_name:str, row_selector=None) -> dict:
+        if row_selector is None:
+            row_selector = lambda k,v: True
+        ret = pd.Series(self.df[right_col_name].values,index=self.df[left_col_name]).to_dict()
+        return {k:v for k,v in ret.items() if row_selector(k,v)}
+    
 ## Statistics
 def p_str(p_val, sep=''):
     """
