@@ -32,6 +32,7 @@ from matplotlib.widgets import LassoSelector as LassoSelectorWidget
 from matplotlib.path import Path as mPath
 from matplotlib.gridspec import GridSpec
 
+import pntools as pn
 from pntools import sampled
 
 
@@ -328,6 +329,192 @@ class StateVariables:
     def update_display(self):
         self._text.update(self._get_display_text())
 
+class Event:
+    """
+    Manage selection of a sequence of events (of length > 1)
+    """
+    def __init__(self, name, size, fname, data_id_func, color, pick_action='overwrite', ax_list=None, **plot_kwargs):
+        self.name = name
+        assert isinstance(size, int) and size > 0
+        self.size = size # length of the sequence
+        self.fname = fname # load and save events to this file
+        self.data_id_func = data_id_func # get's the current data_id from the parent ui when executed
+        self.color = color
+        assert pick_action in ('overwrite', 'append') # overwrite if there can only be one sequence per 'signal'. For multiple, use 'append'
+        self.pick_action = pick_action
+
+        self._buffer = []
+        _, self._data = self.load()
+
+        self.ax_list = ax_list # list of axes on which to show the event
+        self.plot_handles = []
+        self.plot_kwargs = plot_kwargs # tune the style of the plot using this
+    
+    def all_keys_are_tuples(self) -> bool:
+        return all([type(x) == tuple for x in self._data.keys()])
+
+    def get_header(self):
+        return dict(
+            name  = self.name,
+            size  = self.size,
+            fname = self.fname,
+            color = self.color,
+            pick_action = self.pick_action,
+            plot_kwargs = self.plot_kwargs,
+            all_keys_are_tuples = self.all_keys_are_tuples(),
+        )
+
+    @staticmethod
+    def _read_json_file(fname):
+        with open(fname, 'r') as f:
+            header, data = json.load(f)
+        return header, data
+
+    def load(self):
+        if os.path.exists(self.fname):
+            header, data = self._read_json_file(self.fname)
+            if header['all_keys_are_tuples']:
+                data = {eval(k):v for k,v in data.items()}
+            return header, data
+        return {}, {}
+
+    def save(self):
+        with open(self.fname, 'w') as f:
+            header = self.get_header()
+            if header['all_keys_are_tuples']:
+                data = {str(k):v for k,v in self._data.items()}
+            else:
+                data = self._data
+            json.dump((header, data), f, indent=4)
+        print('Updated ' + self.fname)
+    
+    def pick(self, event): # the parent UI would invoke this
+        """
+        Pick the time points of an interval and associate it with a supplied ID
+        If the first selection is outside the axis, then select the first available time point.
+        If the last selection is outside the axis, then select the last available time point.
+        If the selections are not monotonically increasing, then empty the buffer.
+        If any of the 'middle' picks (i.e. not first or last in the sequence) are outside the axes, then empty the buffer.
+        """
+        def strictly_increasing(_list):
+            return all(x<y for x, y in zip(_list, _list[1:]))
+
+        def _get_lines():
+            """Return non-empty lines in the axis where event was invoked, or else in all lines in the figure"""
+            if event.inaxes is not None:
+                return [line for line in event.inaxes.get_lines() if len(line.get_xdata()) > 0]
+            return [line for ax in event.canvas.figure.axes for line in ax.get_lines() if len(line.get_xdata()) > 0] # return ALL lines in the figure
+        
+        def _get_first_available_timestamp():
+            return min([np.nanmin(l.get_xdata()) for l in _get_lines() if len(l.get_xdata()) > 0])
+            # return self.parent.data[self._current_idx].t[0]
+        
+        def _get_last_available_timestamp():
+            return max([np.nanmax(l.get_xdata()) for l in _get_lines() if len(l.get_xdata()) > 0])
+            # return self.parent.data[self._current_idx].t[-1]
+        
+        def clamp(n): 
+            smallest = _get_first_available_timestamp()
+            largest = _get_last_available_timestamp()
+            return max(smallest, min(n, largest))
+        
+        # add picks to the buffer until the length is equal to the size
+        if event.xdata is None: # pick is outside the axes
+            if not self._buffer: # first in the sequence
+                inferred_timestamp = _get_first_available_timestamp()
+            else:
+                assert len(self._buffer) == self.size-1 # last in the sequence
+                inferred_timestamp = _get_last_available_timestamp()
+        else:
+            inferred_timestamp = clamp(float(event.xdata))
+
+        self._buffer.append(inferred_timestamp)
+
+        if not strictly_increasing(self._buffer):
+            self._buffer = [] # reset buffer
+        
+        if len(self._buffer) < self.size:
+            return
+        
+        assert len(self._buffer) == self.size
+
+        sequence = self._buffer.copy()
+        data_id = self.data_id_func()
+        if self.pick_action == 'append':
+            if data_id not in self._data:
+                self._data[data_id] = []
+            self._data[data_id].append(sequence)
+        else: # overwrite
+            self._data[data_id] = sequence
+        print(self.name, data_id, sequence)
+        self._buffer = []
+        self.update_display()
+    
+    def get_current_event_times(self):
+        return list(np.array(self._data.get(self.data_id_func(), [])).flatten())
+    
+    def setup_display(self):
+        for ax in self.ax_list:
+            this_plot, = ax.plot([], [], color=self.color, **self.plot_kwargs)
+            self.plot_handles.append(this_plot)
+
+    def update_display(self, draw=True):
+        for ax, plot_handle in zip(self.ax_list, self.plot_handles):
+            yl = ax.get_ylim()
+            plot_handle.set_data(*pn.ticks_from_times(self.get_current_event_times(), yl))
+        if draw:
+            plt.draw()
+
+class Events:
+    def __init__(self, parent):
+        self._list : list = [] # list of some type of event
+        self.parent = parent
+        self._text = None
+
+    def __len__(self):
+        return len(self._list)
+    
+    def __getitem__(self, key):
+        """return the state variable by name key"""
+        assert key in self.names
+        return {x.name:x for x in self._list}[key]
+    
+    @property
+    def names(self):
+        return [x.name for x in self._list]
+    
+    def add(self, 
+            name,
+            size, 
+            fname, 
+            data_id_func, 
+            color, 
+            pick_action='overwrite', 
+            ax_list=None, 
+            pick_key=None,
+            save_key=None,
+            show=True,
+            **plot_kwargs):
+        assert name not in self.names
+        this_ev = Event(name, size, fname, data_id_func, color, pick_action, ax_list, **plot_kwargs)
+        self._list.append(this_ev)
+        if pick_key is not None:
+            self.parent.add_key_binding(pick_key, this_ev.pick, f'Pick {name}')
+        if save_key is not None:
+            self.parent.add_key_binding(save_key, this_ev.save, f'Save {name}')
+        if show:
+            self.setup_display()
+    
+    def setup_display(self):
+        for ev in self._list:
+            ev.setup_display()
+
+    def update_display(self, draw=True):
+        for ev in self._list:
+            ev.update_display(draw=False)
+        if draw:
+            plt.draw()
+
 class GenericBrowser:
     """
     Generic class to browse data. Meant to be extended before use.
@@ -364,6 +551,7 @@ class GenericBrowser:
         self.selectors = Selectors(parent=self)
         self.memoryslots = MemorySlots(parent=self)
         self.statevariables = StateVariables(parent=self)
+        self.events = Events(parent=self)
 
         # for cleanup
         self.cid = []
@@ -665,6 +853,51 @@ class SignalBrowser(GenericBrowser):
             self.reset_axes()
         plt.draw()
 
+class TestIntervalEvents(SignalBrowser):
+    def __init__(self):
+        plot_data = [sampled.Data(np.random.rand(100), sr=10, meta={'id': f'sig{sig_count:02d}'}) for sig_count in range(10)]
+        super().__init__(plot_data)
+        self.events.add(
+            name='pick1',
+            size=1,
+            fname=r'C:\data\_cache\_pick1.json',
+            data_id_func = (lambda s: s.data[s._current_idx].meta['id']).__get__(self),
+            color = 'tab:red',
+            pick_action = 'append',
+            ax_list = [self._ax],
+            pick_key='1',
+            save_key='ctrl+1',
+            linewidth=1.5,
+        )
+        self.events.add(
+            name='pick2',
+            size=2,
+            fname=r'C:\data\_cache\_pick2.json',
+            data_id_func = (lambda s: s.data[s._current_idx].meta['id']).__get__(self),
+            color = 'tab:green',
+            pick_action = 'append',
+            ax_list = [self._ax],
+            pick_key='2',
+            save_key='ctrl+2',
+            linewidth=1.5,
+        )
+        self.events.add(
+            name='pick3',
+            size=3,
+            fname=r'C:\data\_cache\_pick3.json',
+            data_id_func = (lambda s: s.data[s._current_idx].meta['id']).__get__(self),
+            color = 'tab:blue',
+            pick_action = 'overwrite',
+            ax_list = [self._ax],
+            pick_key='3',
+            save_key='ctrl+3',
+            linewidth=1.5,
+        )
+        self.update()
+
+    def update(self, event=None):
+        self.events.update_display()
+        return super().update(event)
 
 class VideoBrowser(GenericBrowser):
     """Scroll through images of a video"""
