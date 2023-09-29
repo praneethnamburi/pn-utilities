@@ -350,6 +350,11 @@ class Event:
         self.plot_handles = []
         self.plot_kwargs = plot_kwargs # tune the style of the plot using this
     
+    @classmethod
+    def from_file(cls, fname, data_id_func=None):
+        h, _ = cls._read_json_file(fname)
+        return cls(h['name'], h['size'], fname, data_id_func, h['color'], h['pick_action'], **h['plot_kwargs'])
+    
     def all_keys_are_tuples(self) -> bool:
         return all([type(x) == tuple for x in self._data.keys()])
 
@@ -368,13 +373,13 @@ class Event:
     def _read_json_file(fname):
         with open(fname, 'r') as f:
             header, data = json.load(f)
+        if header['all_keys_are_tuples']:
+            data = {eval(k):v for k,v in data.items()}
         return header, data
 
     def load(self):
         if os.path.exists(self.fname):
             header, data = self._read_json_file(self.fname)
-            if header['all_keys_are_tuples']:
-                data = {eval(k):v for k,v in data.items()}
             return header, data
         return {}, {}
 
