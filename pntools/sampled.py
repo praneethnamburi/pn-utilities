@@ -475,7 +475,6 @@ class Data: # Signal processing
         return self._clone(proc_sig, ('detrend_airPLS', {'args':args, **kwargs}))
 
 
-
     def medfilt(self, order=11):
         """
         Median filter the signal
@@ -660,7 +659,17 @@ class Data: # Signal processing
         """Onset and offset times of a thresholded 1D sampled.Data object"""
         onset_samples, offset_samples = onoff_samples(self._sig)
         return [self.t[x] for x in onset_samples], [self.t[x] for x in offset_samples]
-
+    
+    def find_crossings(self, th=0., th_time=None):
+        """Find the times at which the signal crosses a given threshold th.
+        th_time - Ignore crossings that are less than th_time apart. Caution - uses median filter, check carefully.
+        """
+        if th_time is None:
+            neg_to_pos, pos_to_neg = (self > th).onoff_times()
+        else:
+            neg_to_pos, pos_to_neg = ((self > th).medfilt(order=round(self.sr*th_time*2)) > 0.5).onoff_times()
+        return neg_to_pos, pos_to_neg
+        
     def get_signal_axis(self):
         if self().ndim == 1:
             return None # there is no signal axis for a 1d signal
