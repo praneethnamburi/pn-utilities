@@ -329,9 +329,53 @@ class StateVariables:
     def update_display(self):
         self._text.update(self._get_display_text())
 
+class EventData:
+    """
+    Manage the data from one event type in one trial.
+    """
+    def __init__(self, default=None, added=None, removed=None, tags=None, algorithm_name:str='', params:dict=None) -> None:
+        _to_list = lambda x: [] if x is None else x
+        self.default = _to_list(default) # e.g. created by an algorithm
+        self.added = _to_list(added)     # if an 'added' point is removed, then it will simply be deleted. There will be no record of it.
+        self.removed = _to_list(removed) # anything that is removed from default will be stored here
+        self.tags = _to_list(tags)
+        self.algorithm_name = algorithm_name
+        self.params = params if params is not None else {} # params used to generate the default list 
+
+    def asdict(self):
+        return dict(
+            default         = self.default,
+            added           = self.added,
+            removed         = self.removed,
+            tags            = self.tags,
+            algorithm_name  = self.algorithm_name,
+            params          = self.params,
+        )
+    
+    def len(self): # number of events
+        return len(self.get_events())
+    
+    def get_events(self):
+        x = self.default + self.added
+        x.sort()
+        return x
+
+# def upgrade_event(orig_ev):
+#     """
+#     Convert json files that followed the original format (simple list vs EventData type as an event entry in one trial)
+#     After using this function, use ev.save()
+#     """
+#     ev = copy(orig_ev)
+#     _data_orig = deepcopy(orig_ev._data)
+#     ev._data = {}
+#     ev.initialize_event_data(list(_data_orig.keys()))
+#     for data_id, data_val in _data_orig.items():
+#         ev._data[data_id].added.append(data_val)
+#     return ev
+
 class Event:
     """
-    Manage selection of a sequence of events (of length > 1)
+    Manage selection of a sequence of events (of length >= 1)
     """
     def __init__(self, name, size, fname, data_id_func, color, pick_action='overwrite', ax_list=None, **plot_kwargs):
         self.name = name
@@ -349,6 +393,12 @@ class Event:
         self.ax_list = ax_list # list of axes on which to show the event
         self.plot_handles = []
         self.plot_kwargs = plot_kwargs # tune the style of the plot using this
+    
+    def initialize_event_data(self, data_id_list):
+        """Useful for initializing an event"""
+        for data_id in data_id_list:
+            if data_id not in self._data:
+                self._data[data_id] = EventData()
     
     @classmethod
     def from_file(cls, fname, data_id_func=None):
@@ -374,7 +424,9 @@ class Event:
         with open(fname, 'r') as f:
             header, data = json.load(f)
         if header['all_keys_are_tuples']:
-            data = {eval(k):v for k,v in data.items()}
+            data = {eval(k):EventData(**v) for k,v in data.items()}
+        else:
+            data = {k:EventData(**v) for k,v in data.items()}
         return header, data
 
     def load(self):
@@ -387,13 +439,13 @@ class Event:
         with open(self.fname, 'w') as f:
             header = self.get_header()
             if header['all_keys_are_tuples']:
-                data = {str(k):v for k,v in self._data.items()}
+                data = {str(k):v.asdict() for k,v in self._data.items()}
             else:
-                data = self._data
+                data = {k:v.asdict() for k,v in self._data.items()}
             json.dump((header, data), f, indent=4)
         print('Updated ' + self.fname)
     
-    def pick(self, event): # the parent UI would invoke this
+    def add(self, event): # the parent UI would invoke this
         """
         Pick the time points of an interval and associate it with a supplied ID
         If the first selection is outside the axis, then select the first available time point.
@@ -444,19 +496,22 @@ class Event:
         assert len(self._buffer) == self.size
 
         sequence = self._buffer.copy()
+
+        # add data to store
         data_id = self.data_id_func()
+        if data_id not in self._data:
+            self._data[data_id] = EventData()
         if self.pick_action == 'append':
-            if data_id not in self._data:
-                self._data[data_id] = []
-            self._data[data_id].append(sequence)
-        else: # overwrite
-            self._data[data_id] = sequence
+            self._data[data_id].added.append(sequence)
+        else: # overwrite => one event per trial
+            self._data[data_id].added = [sequence]
+
         print(self.name, data_id, sequence)
         self._buffer = []
         self.update_display()
     
     def get_current_event_times(self):
-        return list(np.array(self._data.get(self.data_id_func(), [])).flatten())
+        return list(np.array(self._data.get(self.data_id_func(), EventData()).get_events()).flatten())
     
     def setup_display(self):
         for ax in self.ax_list:
@@ -504,7 +559,7 @@ class Events:
         this_ev = Event(name, size, fname, data_id_func, color, pick_action, ax_list, **plot_kwargs)
         self._list.append(this_ev)
         if pick_key is not None:
-            self.parent.add_key_binding(pick_key, this_ev.pick, f'Pick {name}')
+            self.parent.add_key_binding(pick_key, this_ev.add, f'Pick {name}')
         if save_key is not None:
             self.parent.add_key_binding(save_key, this_ev.save, f'Save {name}')
         if show:
@@ -862,6 +917,7 @@ class TestIntervalEvents(SignalBrowser):
     def __init__(self):
         plot_data = [sampled.Data(np.random.rand(100), sr=10, meta={'id': f'sig{sig_count:02d}'}) for sig_count in range(10)]
         super().__init__(plot_data)
+        self.memoryslots.disable()
         self.events.add(
             name='pick1',
             size=1,
