@@ -336,7 +336,7 @@ class EventData:
     def __init__(self, default=None, added=None, removed=None, tags=None, algorithm_name:str='', params:dict=None) -> None:
         _to_list = lambda x: [] if x is None else x
         self.default = _to_list(default) # e.g. created by an algorithm
-        self.added = _to_list(added)     # if an 'added' point is removed, then it will simply be deleted. There will be no record of it.
+        self.added = _to_list(added)     # Manually added events, e.g. through a UI. if an 'added' point is removed, then it will simply be deleted. There will be no record of it.
         self.removed = _to_list(removed) # anything that is removed from default will be stored here
         self.tags = _to_list(tags)
         self.algorithm_name = algorithm_name
@@ -359,19 +359,6 @@ class EventData:
         x = self.default + self.added
         x.sort()
         return x
-
-# def upgrade_event(orig_ev):
-#     """
-#     Convert json files that followed the original format (simple list vs EventData type as an event entry in one trial)
-#     After using this function, use ev.save()
-#     """
-#     ev = copy(orig_ev)
-#     _data_orig = deepcopy(orig_ev._data)
-#     ev._data = {}
-#     ev.initialize_event_data(list(_data_orig.keys()))
-#     for data_id, data_val in _data_orig.items():
-#         ev._data[data_id].added.append(data_val)
-#     return ev
 
 class Event:
     """
