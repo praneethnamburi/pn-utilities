@@ -353,9 +353,9 @@ class EventData:
         )
     
     def len(self): # number of events
-        return len(self.get_events())
+        return len(self.get_times())
     
-    def get_events(self):
+    def get_times(self):
         x = self.default + self.added
         x.sort()
         return x
@@ -498,7 +498,7 @@ class Event:
         self.update_display()
     
     def get_current_event_times(self):
-        return list(np.array(self._data.get(self.data_id_func(), EventData()).get_events()).flatten())
+        return list(np.array(self._data.get(self.data_id_func(), EventData()).get_times()).flatten())
     
     def setup_display(self):
         for ax in self.ax_list:
