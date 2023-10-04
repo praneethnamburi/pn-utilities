@@ -364,7 +364,7 @@ class Event:
     """
     Manage selection of a sequence of events (of length >= 1)
     """
-    def __init__(self, name, size, fname, data_id_func, color, pick_action='overwrite', ax_list=None, **plot_kwargs):
+    def __init__(self, name, size, fname, data_id_func, color, pick_action='overwrite', ax_list=None, win_remove=(-0.1, 0.1), win_add=(-0.25, 0.25), **plot_kwargs):
         self.name = name
         assert isinstance(size, int) and size > 0
         self.size = size # length of the sequence
@@ -379,8 +379,12 @@ class Event:
 
         self.ax_list = ax_list # list of axes on which to show the event
         self.plot_handles = []
-        self.plot_kwargs = plot_kwargs # tune the style of the plot using this
+
+        # self.win_add = win_add # seconds, search to add peak within this window, in the peak or valley modes
+        self.win_remove = win_remove # seconds, search to remove an event within this window
     
+        self.plot_kwargs = plot_kwargs # tune the style of the plot using this
+
     def initialize_event_data(self, data_id_list):
         """Useful for initializing an event"""
         for data_id in data_id_list:
@@ -493,14 +497,65 @@ class Event:
         else: # overwrite => one event per trial
             self._data[data_id].added = [sequence]
 
-        print(self.name, data_id, sequence)
+        print(self.name, 'add', data_id, sequence)
         self._buffer = []
+        self.update_display()
+    
+    def remove(self, event):
+        """
+        For events of length > 1, remove by removing the first element in that sequence.
+        """
+        if event.xdata is None:
+            return
+        t_marked = float(event.xdata)
+        data_id = self.data_id_func()
+        if data_id not in self._data:
+            return
+        ev = self._data[data_id]
+        
+        added_start_times = [x[0] for x in ev.added]
+        default_start_times = [x[0] for x in ev.default]
+        sequence = None # data that was removed
+        _removed = False
+        _deleted = False
+        if len(ev.added) > 0 and len(ev.default) > 0:
+            idx_add, val_add = pn.find_nearest(added_start_times, t_marked)
+            idx_def, val_def = pn.find_nearest(default_start_times, t_marked)
+            
+            add_dist = np.abs(val_add-t_marked)
+            def_dist = np.abs(val_def-t_marked)
+            if (add_dist <= def_dist) and (self.win_remove[0] < add_dist < self.win_remove[1]):
+                sequence = ev.added.pop(idx_add)
+                _deleted = True
+            if (def_dist < add_dist) and (self.win_remove[0] < def_dist < self.win_remove[1]):
+                ev.removed.append(sequence := ev.default.pop(idx_def))
+                _removed = True
+        elif len(ev.added) > 0 and len(ev.default) == 0:
+            idx_add, val_add = pn.find_nearest(added_start_times, t_marked)
+            add_dist = np.abs(val_add-t_marked)
+            if self.win_remove[0] < add_dist < self.win_remove[1]:
+                sequence = ev.added.pop(idx_add)
+                _deleted = True
+        elif len(ev.added) == 0 and len(ev.default) > 0:
+            idx_def, val_def = pn.find_nearest(default_start_times, t_marked)
+            def_dist = np.abs(val_def-t_marked)
+            if self.win_remove[0] < def_dist < self.win_remove[1]:
+                ev.removed.append(sequence := ev.default.pop(idx_def))
+                _removed = True
+        else:
+            return
+        
+        if sequence is None:
+            return
+        
+        assert _removed is not _deleted # removed moves data from default (i.e. auto-detected) to removed, and delete expunges a manually added event
+        print(self.name, {True: 'remove', False: 'delete'}[_removed], data_id, sequence)
         self.update_display()
     
     def get_current_event_times(self):
         return list(np.array(self._data.get(self.data_id_func(), EventData()).get_times()).flatten())
     
-    def setup_display(self):
+    def setup_display(self): # setup event display this event on one or more axes
         for ax in self.ax_list:
             this_plot, = ax.plot([], [], color=self.color, **self.plot_kwargs)
             self.plot_handles.append(this_plot)
@@ -538,15 +593,18 @@ class Events:
             color, 
             pick_action='overwrite', 
             ax_list=None, 
-            pick_key=None,
+            add_key=None,
+            remove_key=None,
             save_key=None,
             show=True,
             **plot_kwargs):
         assert name not in self.names
         this_ev = Event(name, size, fname, data_id_func, color, pick_action, ax_list, **plot_kwargs)
         self._list.append(this_ev)
-        if pick_key is not None:
-            self.parent.add_key_binding(pick_key, this_ev.add, f'Pick {name}')
+        if add_key is not None:
+            self.parent.add_key_binding(add_key, this_ev.add, f'Add {name}')
+        if remove_key is not None:
+            self.parent.add_key_binding(remove_key, this_ev.remove, f'Remove {name}')
         if save_key is not None:
             self.parent.add_key_binding(save_key, this_ev.save, f'Save {name}')
         if show:
@@ -913,7 +971,8 @@ class TestIntervalEvents(SignalBrowser):
             color = 'tab:red',
             pick_action = 'append',
             ax_list = [self._ax],
-            pick_key='1',
+            add_key='1',
+            remove_key='4',
             save_key='ctrl+1',
             linewidth=1.5,
         )
@@ -925,7 +984,8 @@ class TestIntervalEvents(SignalBrowser):
             color = 'tab:green',
             pick_action = 'append',
             ax_list = [self._ax],
-            pick_key='2',
+            add_key='2',
+            remove_key='5',
             save_key='ctrl+2',
             linewidth=1.5,
         )
@@ -937,7 +997,8 @@ class TestIntervalEvents(SignalBrowser):
             color = 'tab:blue',
             pick_action = 'overwrite',
             ax_list = [self._ax],
-            pick_key='3',
+            add_key='3',
+            remove_key='6',
             save_key='ctrl+3',
             linewidth=1.5,
         )
