@@ -382,7 +382,7 @@ class Event:
 
         # self.win_add = win_add # seconds, search to add peak within this window, in the peak or valley modes
         self.win_remove = win_remove # seconds, search to remove an event within this window
-    
+        self.win_add = win_add # seconds, search to add an event within this window in peak or valley mode
         self.plot_kwargs = plot_kwargs # tune the style of the plot using this
 
     def initialize_event_data(self, data_id_list):
@@ -394,7 +394,7 @@ class Event:
     @classmethod
     def from_file(cls, fname, data_id_func=None):
         h, _ = cls._read_json_file(fname)
-        return cls(h['name'], h['size'], fname, data_id_func, h['color'], h['pick_action'], **h['plot_kwargs'])
+        return cls(h['name'], h['size'], fname, data_id_func, h['color'], h['pick_action'], h['win_remove'], h['win_add'], **h['plot_kwargs'])
     
     def all_keys_are_tuples(self) -> bool:
         return all([type(x) == tuple for x in self._data.keys()])
@@ -406,6 +406,8 @@ class Event:
             fname = self.fname,
             color = self.color,
             pick_action = self.pick_action,
+            win_remove = self.win_remove,
+            win_add = self.win_add,
             plot_kwargs = self.plot_kwargs,
             all_keys_are_tuples = self.all_keys_are_tuples(),
         )
@@ -593,13 +595,15 @@ class Events:
             color, 
             pick_action='overwrite', 
             ax_list=None, 
+            win_remove=(-0.1, 0.1),
+            win_add=(-0.25, 0.25),
             add_key=None,
             remove_key=None,
             save_key=None,
             show=True,
             **plot_kwargs):
         assert name not in self.names
-        this_ev = Event(name, size, fname, data_id_func, color, pick_action, ax_list, **plot_kwargs)
+        this_ev = Event(name, size, fname, data_id_func, color, pick_action, ax_list, win_remove, win_add, **plot_kwargs)
         self._list.append(this_ev)
         if add_key is not None:
             self.parent.add_key_binding(add_key, this_ev.add, f'Add {name}')
@@ -963,11 +967,12 @@ class TestIntervalEvents(SignalBrowser):
         plot_data = [sampled.Data(np.random.rand(100), sr=10, meta={'id': f'sig{sig_count:02d}'}) for sig_count in range(10)]
         super().__init__(plot_data)
         self.memoryslots.disable()
+        data_id_func = (lambda s: s.data[s._current_idx].meta['id']).__get__(self)
         self.events.add(
             name='pick1',
             size=1,
             fname=r'C:\data\_cache\_pick1.json',
-            data_id_func = (lambda s: s.data[s._current_idx].meta['id']).__get__(self),
+            data_id_func = data_id_func,
             color = 'tab:red',
             pick_action = 'append',
             ax_list = [self._ax],
@@ -980,7 +985,7 @@ class TestIntervalEvents(SignalBrowser):
             name='pick2',
             size=2,
             fname=r'C:\data\_cache\_pick2.json',
-            data_id_func = (lambda s: s.data[s._current_idx].meta['id']).__get__(self),
+            data_id_func = data_id_func,
             color = 'tab:green',
             pick_action = 'append',
             ax_list = [self._ax],
@@ -993,7 +998,7 @@ class TestIntervalEvents(SignalBrowser):
             name='pick3',
             size=3,
             fname=r'C:\data\_cache\_pick3.json',
-            data_id_func = (lambda s: s.data[s._current_idx].meta['id']).__get__(self),
+            data_id_func = data_id_func,
             color = 'tab:blue',
             pick_action = 'overwrite',
             ax_list = [self._ax],
