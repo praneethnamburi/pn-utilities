@@ -364,12 +364,16 @@ class Event:
     """
     Manage selection of a sequence of events (of length >= 1)
     """
-    def __init__(self, name, size, fname, data_id_func, color, pick_action='overwrite', ax_list=None, win_remove=(-0.1, 0.1), win_add=(-0.25, 0.25), **plot_kwargs):
+    def __init__(self, name, size, fname, data_id_func=None, color='random', pick_action='overwrite', ax_list=None, win_remove=(-0.1, 0.1), win_add=(-0.25, 0.25), **plot_kwargs):
         self.name = name
         assert isinstance(size, int) and size > 0
         self.size = size # length of the sequence
         self.fname = fname # load and save events to this file
-        self.data_id_func = data_id_func # get's the current data_id from the parent ui when executed
+        self.data_id_func = data_id_func # gets the current data_id from the parent ui when executed
+        if isinstance(color, int):
+            color = pn.PLOT_COLORS[color]
+        elif color == 'random':
+            color = np.random.choice(pn.PLOT_COLORS)
         self.color = color
         assert pick_action in ('overwrite', 'append') # overwrite if there can only be one sequence per 'signal'. For multiple, use 'append'
         self.pick_action = pick_action
@@ -392,9 +396,61 @@ class Event:
                 self._data[data_id] = EventData()
     
     @classmethod
-    def from_file(cls, fname, data_id_func=None):
+    def _from_existing_file(cls, fname, data_id_func=None):
+        """Create an Event object by reading an existing json file."""
         h, _ = cls._read_json_file(fname)
         return cls(h['name'], h['size'], fname, data_id_func, h['color'], h['pick_action'], h['win_remove'], h['win_add'], **h['plot_kwargs'])
+    
+    @classmethod
+    def from_file(cls, fname, **kwargs):
+        """
+        Create an empty events file with the given file name (fname) and any parameters.
+        Assigns best-guess defaults
+        """
+        if not os.path.exists(fname):
+            kwargs['name'] = kwargs.get('name', Path(fname).stem)
+            kwargs['size'] = kwargs.get('size', 1)
+            kwargs['data_id_func'] = kwargs.get('data_id_func', None) # this is irrelevant
+
+            ret = cls(fname=fname, **kwargs)
+            ret.save() # this has a print message
+            return ret
+        return cls._from_existing_file(fname, kwargs.get('data_id_func', None))
+
+    @classmethod
+    def from_data(cls, data:dict, name:str='Event', fname:str='', overwrite:bool=False, **kwargs):
+        """Create an event file by filling in the 'default' events extracted by an algorithm.
+        kwargs 
+            - tags, algorithm_name, and params will be passed to gui.EventData
+            - all other kwargs will be passed to gui.Event
+        """
+        algorithm_info = dict(
+            tags = kwargs.pop('tags', []),
+            algorithm_name = kwargs.pop('algorithm_name', ''),
+            params = kwargs.pop('params', {})
+        )
+        size = []
+        for key, val in data.items():
+            if isinstance(val, EventData):
+                continue
+            v = np.asarray(val)
+            if v.ndim == 1: # passing in a list events of size 1
+                v = v[:, np.newaxis]
+                val = [list(x) for x in v]
+            data[key] = EventData(default=val, **algorithm_info)
+            size.append(v.shape[-1])
+        size = list(set(size))
+        assert len(size) == 1 # make sure we have the same type of events
+        size = size[0]
+        if 'size' in kwargs:
+            assert kwargs['size'] == size
+            del kwargs['size']
+        ret = cls(name, size, fname, **kwargs)
+        ret._data = data
+        if pn.is_path_exists_or_creatable(fname):
+            if (not os.path.exists(fname)) or overwrite:
+                ret.save()
+        return ret
     
     def all_keys_are_tuples(self) -> bool:
         return all([type(x) == tuple for x in self._data.keys()])
@@ -429,6 +485,7 @@ class Event:
         return {}, {}
 
     def save(self):
+        action_str = 'Updated' if os.path.exists(self.fname) else 'Created'
         with open(self.fname, 'w') as f:
             header = self.get_header()
             if header['all_keys_are_tuples']:
@@ -436,7 +493,7 @@ class Event:
             else:
                 data = {k:v.asdict() for k,v in self._data.items()}
             json.dump((header, data), f, indent=4)
-        print('Updated ' + self.fname)
+        print(action_str + ' ' + self.fname)
     
     def add(self, event): # the parent UI would invoke this
         """
@@ -612,7 +669,17 @@ class Events:
         if save_key is not None:
             self.parent.add_key_binding(save_key, this_ev.save, f'Save {name}')
         if show:
-            self.setup_display()
+            this_ev.setup_display()
+    
+    def add_from_file(self, fname, data_id_func, ax_list=None, add_key=None, remove_key=None, save_key=None, show=True, **plot_kwargs):
+        """Easier than using add for adding events that are created by another algorithm, and meant to be edited using the gui module."""
+        assert os.path.exists(fname)
+        ev = Event._from_existing_file(fname)
+        hdr = ev.get_header()
+        del hdr['all_keys_are_tuples']
+        plot_kwargs = hdr['plot_kwargs'] | plot_kwargs
+        del hdr['plot_kwargs']
+        self.add(data_id_func=data_id_func, ax_list=ax_list, add_key=add_key, remove_key=remove_key, save_key=save_key, show=show, **(hdr | plot_kwargs))
     
     def setup_display(self):
         for ev in self._list:
