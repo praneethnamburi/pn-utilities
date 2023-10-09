@@ -7,6 +7,7 @@ import numpy as np
 from scipy.signal import hilbert, firwin, filtfilt, butter, resample, iirnotch, welch
 from scipy.fft import fft, fftfreq
 from scipy.interpolate import interp1d
+from scipy.integrate import simps
 
 class Time:
     """
@@ -755,8 +756,20 @@ class Data: # Signal processing
         f, Pxx = self.psd(*args, **kwargs)
         df = (f[-1] - f[0])/(len(f)-1)
         return Data(Pxx, sr=1/df, t0=f[0])
-        
-    def diff(self):
+
+    def smoothness(self):
+        """
+        Computes the log dimensionless jerk (LDLJ) according to:
+        Melendez-Calderon, A., et al. (2021). Estimating movement smoothness from inertial measurement units.
+        Frontiers in Bioengineering and Biotechnology, 8, 558771.
+        """
+        scale = np.power(self.dur, 3) / np.power(np.nanmax(self._sig), 2)
+        jerk = self.apply(np.diff, n=2) / np.power(1 / self.sr, 2)
+        dlj = - scale * simps(np.power(jerk, 2)) * (1 / self.sr)
+
+        return -np.log(np.abs(dlj))
+
+    def diff(self, order=1):
         if self._sig.ndim == 2:
             if self.axis == 1:
                 pp_value = (self._sig[:, 1] - self._sig[:, 0])[:, None]
@@ -769,7 +782,7 @@ class Data: # Signal processing
             fn = np.hstack
 
         # returning a marker type even though this is technically not true
-        return self._clone(fn( (pp_value, np.diff(self._sig, axis=self.axis)*self.sr) ), ('diff', None))
+        return self._clone(fn((pp_value, np.diff(self._sig, axis=self.axis, n=order)*self.sr)), ('diff', None))
     
     def magnitude(self):
         assert self._sig.ndim == 2 # magnitude does not make sense for a 1D signal (in that case, use np.linalg.norm directly)
