@@ -228,6 +228,9 @@ class MemorySlots:
         self._idx = self.initialize()
         self._memtext = None
         self.parent = parent
+    
+    def __len__(self):
+        return len(self._idx)
 
     @staticmethod
     def initialize():
@@ -772,11 +775,19 @@ class GenericBrowser:
         self.cid.append(self.figure.canvas.mpl_connect('key_press_event', self))
         self.cid.append(self.figure.canvas.mpl_connect('close_event', self))
     
-    def update(self): # extended classes are expected to implement their update function!
-        self.memoryslots.update_display()
+    def update_assets(self):
+        if self.has('memoryslots'):
+            self.memoryslots.update_display()
+        if self.has('events'):
+            self.events.update_display()
+        if self.has('statevariables'):
+            self.statevariables.update_display()
+
+    def update(self, event=None): # extended classes are expected to implement their update function!
+        self.update_assets()
     
-    def update_without_clear(self):
-        self.memoryslots.update_display()
+    def update_without_clear(self, event=None):
+        self.update_assets()
         # I did this for browsers that clear the axis each time! Those classes will need to re-implement this method
 
     def mpl_remove_bindings(self, key_list):
@@ -939,6 +950,10 @@ class GenericBrowser:
             {'x': this_ax.set_xlim, 'y': this_ax.set_ylim}[pan_ax](new_lim)
         plt.draw()
         self.update_without_clear() # panning is pointless if update clears the axis!!
+    
+    def has(self, asset_type): # e.g. has('events')
+        assert asset_type in ('buttons', 'selectors', 'memoryslots', 'statevariables', 'events')
+        return len(getattr(self, asset_type)) != 0
 
 
 class PlotBrowser(GenericBrowser):
@@ -1019,6 +1034,7 @@ class PlotBrowser(GenericBrowser):
             self.plot_func(self.get_current_data(), self.plot_handles, **self.plot_kwargs)
         if self.buttons['Auto limits'].state: # is True
             self.reset_axes()
+        super().update(event)
         plt.draw()
     
     def udpate_without_clear(self):
