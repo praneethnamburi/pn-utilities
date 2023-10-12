@@ -614,15 +614,53 @@ class Event:
     def get_current_event_times(self):
         return list(np.array(self._data.get(self.data_id_func(), EventData()).get_times()).flatten())
     
+    def _get_display_funcs(self):
+        display_type = self.plot_kwargs.get('display_type', 'line')
+        assert display_type in ('line', 'fill')
+        if display_type == 'fill':
+            assert self.size == 2
+        if display_type == 'line':
+            return self._setup_display_line, self._update_display_line
+        return self._setup_display_fill, self._update_display_fill
+
     def setup_display(self): # setup event display this event on one or more axes
+        setup_func, _ = self._get_display_funcs()
+        setup_func()
+
+    def _setup_display_line(self):
+        plot_kwargs = {} | self.plot_kwargs
+        plot_kwargs.pop('display_type', None)
         for ax in self.ax_list:
-            this_plot, = ax.plot([], [], color=self.color, **self.plot_kwargs)
+            this_plot, = ax.plot([], [], color=self.color, **plot_kwargs)
             self.plot_handles.append(this_plot)
 
+    def _setup_display_fill(self):
+        return # everything is redrawm currently for fill display. So, don't do setup.
+
     def update_display(self, draw=True):
+        _, update_func = self._get_display_funcs()
+        update_func(draw)
+    
+    def _update_display_line(self, draw):
         for ax, plot_handle in zip(self.ax_list, self.plot_handles):
             yl = ax.get_ylim()
             plot_handle.set_data(*pn.ticks_from_times(self.get_current_event_times(), yl))
+        if draw:
+            plt.draw()
+    
+    def _update_display_fill(self, draw):
+        for plot_handle in self.plot_handles:
+            plot_handle.remove()
+        self.plot_handles = []
+        plot_kwargs = dict(alpha=0.2, edgecolor=None) | self.plot_kwargs
+        plot_kwargs.pop('display_type', None)
+        for ax in self.ax_list:
+            yl = ax.get_ylim()
+            x = np.asarray([this_times + [np.nan] for this_times in self._data.get(self.data_id_func(), EventData()).get_times()]).flatten()
+            y1 = np.asarray([[yl[0]]*2 + [np.nan] for _ in range(int(len(x)/3))]).flatten()
+            y2 = np.asarray([[yl[1]]*2 + [np.nan] for _ in range(int(len(x)/3))]).flatten()
+            this_collection = ax.fill_between(x, y1, y2, color=self.color, **plot_kwargs)
+            self.plot_handles.append(this_collection)
         if draw:
             plt.draw()
 
