@@ -757,18 +757,6 @@ class Data: # Signal processing
         df = (f[-1] - f[0])/(len(f)-1)
         return Data(Pxx, sr=1/df, t0=f[0])
 
-    def smoothness(self):
-        """
-        Computes the log dimensionless jerk (LDLJ) according to:
-        Melendez-Calderon, A., et al. (2021). Estimating movement smoothness from inertial measurement units.
-        Frontiers in Bioengineering and Biotechnology, 8, 558771.
-        """
-        scale = np.power(self.dur, 3) / np.power(np.nanmax(self._sig), 2)
-        jerk = self.apply(np.diff, n=2) / np.power(1 / self.sr, 2)
-        dlj = - scale * simps(np.power(jerk, 2)) * (1 / self.sr)
-
-        return -np.log(np.abs(dlj))
-
     def diff(self, order=1):
         if self._sig.ndim == 2:
             if self.axis == 1:
