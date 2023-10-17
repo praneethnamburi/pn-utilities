@@ -375,7 +375,7 @@ class Data: # Signal processing
             meta = None
         axis = kwargs.pop('axis', self.axis)
         t0 = kwargs.pop('t0', self._t0)
-        return self.__class__(proc_sig, self.sr, axis, his, t0, meta)
+        return self.__class__(proc_sig, self.sr, axis, his, t0, meta=meta)
 
     def analytic(self):
         proc_sig = hilbert(self._sig, axis=self.axis)
