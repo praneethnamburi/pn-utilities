@@ -829,6 +829,12 @@ class Data: # Signal processing
         proc_sig = np.lib.stride_tricks.sliding_window_view(self._sig, stride, axis=self.axis).mean(axis=-1)
         t_start_offset = (stride-1)/(2*self.sr)
         return self.__class__(proc_sig, sr=self.sr, axis=self.axis, history=self._history+[('moving average with stride', stride)], t0=self._t0+t_start_offset, meta=self.meta)
+    
+    def xlim(self):
+        return self.t_start(), self.t_end()
+    
+    def ylim(self):
+        return np.nanmin(self._sig), np.nanmax(self._sig)
 
 
 class DataList(list):
