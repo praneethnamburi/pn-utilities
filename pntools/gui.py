@@ -631,7 +631,7 @@ class Event:
         setup_func()
 
     def _setup_display_line(self):
-        plot_kwargs = {} | self.plot_kwargs
+        plot_kwargs = {'label':f'event:{self.name}'} | self.plot_kwargs
         plot_kwargs.pop('display_type', None)
         for ax in self.ax_list:
             this_plot, = ax.plot([], [], color=self.color, **plot_kwargs)
@@ -644,9 +644,15 @@ class Event:
         _, update_func = self._get_display_funcs()
         update_func(draw)
     
+    def _get_ylim(self, this_ax, type='data'):
+        if type == 'data':
+            x = np.asarray([(np.nanmin(line.get_ydata()), np.nanmax(line.get_ydata())) for line in this_ax.get_lines() if not line.get_label().startswith('event:')])
+            return np.min(x[:, 0]), np.max(x[:, 1])
+        return this_ax.get_ylim()
+
     def _update_display_line(self, draw):
         for ax, plot_handle in zip(self.ax_list, self.plot_handles):
-            yl = ax.get_ylim()
+            yl = self._get_ylim(ax)
             plot_handle.set_data(*pn.ticks_from_times(self.get_current_event_times(), yl))
         if draw:
             plt.draw()
@@ -658,7 +664,7 @@ class Event:
         plot_kwargs = dict(alpha=0.2, edgecolor=None) | self.plot_kwargs
         plot_kwargs.pop('display_type', None)
         for ax in self.ax_list:
-            yl = ax.get_ylim()
+            yl = self._get_ylim(ax)
             x = np.asarray([this_times + [np.nan] for this_times in self._data.get(self.data_id_func(), EventData()).get_times()]).flatten()
             y1 = np.asarray([[yl[0]]*2 + [np.nan] for _ in range(int(len(x)/3))]).flatten()
             y2 = np.asarray([[yl[1]]*2 + [np.nan] for _ in range(int(len(x)/3))]).flatten()
