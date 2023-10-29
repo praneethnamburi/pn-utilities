@@ -355,7 +355,7 @@ class EventData:
             params          = self.params,
         )
     
-    def len(self): # number of events
+    def __len__(self): # number of events
         return len(self.get_times())
     
     def get_times(self):
@@ -432,6 +432,7 @@ class Event:
             algorithm_name = kwargs.pop('algorithm_name', ''),
             params = kwargs.pop('params', {})
         )
+        
         size = []
         for key, val in data.items():
             if isinstance(val, EventData):
@@ -441,13 +442,21 @@ class Event:
                 v = v[:, np.newaxis]
                 val = [list(x) for x in v]
             data[key] = EventData(default=val, **algorithm_info)
-            size.append(v.shape[-1])
-        size = list(set(size))
-        assert len(size) == 1 # make sure we have the same type of events
-        size = size[0]
+            if len(data[key]) > 0: # when there are no events, size cannot be inferred for that trial. Note that this process will fail if there are no events in ANY of the trials. size has to be passed in with kwargs.
+                size.append(v.shape[-1])
+        
+        if not size: # if there were no events in the data that was passed!
+            assert 'size' in kwargs
+            size = kwargs['size']
+        else:
+            size = list(set(size))
+            assert len(size) == 1 # make sure we have the same type of events
+            size = size[0]
+        
         if 'size' in kwargs:
             assert kwargs['size'] == size
             del kwargs['size']
+        
         ret = cls(name, size, fname, **kwargs)
         ret._data = data
         if pn.is_path_exists_or_creatable(fname):
