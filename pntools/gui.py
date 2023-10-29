@@ -402,7 +402,7 @@ class Event:
     def _from_existing_file(cls, fname, data_id_func=None):
         """Create an Event object by reading an existing json file."""
         h, _ = cls._read_json_file(fname)
-        return cls(h['name'], h['size'], fname, data_id_func, h['color'], h['pick_action'], h['win_remove'], h['win_add'], **h['plot_kwargs'])
+        return cls(h['name'], h['size'], fname, data_id_func, h['color'], h['pick_action'], None, h['win_remove'], h['win_add'], **h['plot_kwargs'])
     
     @classmethod
     def from_file(cls, fname, **kwargs):
@@ -453,6 +453,15 @@ class Event:
         if pn.is_path_exists_or_creatable(fname):
             if (not os.path.exists(fname)) or overwrite:
                 ret.save()
+            else: # don't overwrite and exists, then append new data to the file if it exists
+                assert os.path.exists(fname) and (not overwrite)
+                ret_existing = cls.from_file(fname, **kwargs)
+                new_keys = set(ret._data.keys()) - set(ret_existing._data.keys())
+                if len(new_keys) > 0: # if there is new data, then add it to the event file
+                    print(f'Appending new data to the event file {fname}:')
+                    print(new_keys)
+                    ret_existing._data = ret._data | ret_existing._data
+                    ret_existing.save()
         return ret
     
     def all_keys_are_tuples(self) -> bool:
@@ -646,8 +655,11 @@ class Event:
     
     def _get_ylim(self, this_ax, type='data'):
         if type == 'data':
-            x = np.asarray([(np.nanmin(line.get_ydata()), np.nanmax(line.get_ydata())) for line in this_ax.get_lines() if not line.get_label().startswith('event:')])
-            return np.min(x[:, 0]), np.max(x[:, 1])
+            try:
+                x = np.asarray([(np.nanmin(line.get_ydata()), np.nanmax(line.get_ydata())) for line in this_ax.get_lines() if not line.get_label().startswith('event:')])
+                return np.min(x[:, 0]), np.max(x[:, 1])
+            except ValueError:
+                return this_ax.get_ylim()
         return this_ax.get_ylim()
 
     def _update_display_line(self, draw):
