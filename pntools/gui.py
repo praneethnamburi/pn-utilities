@@ -391,6 +391,7 @@ class Event:
         self.win_remove = win_remove # seconds, search to remove an event within this window
         self.win_add = win_add # seconds, search to add an event within this window in peak or valley mode
         self.plot_kwargs = plot_kwargs # tune the style of the plot using this
+        self._hide = False
 
     def initialize_event_data(self, data_id_list):
         """Useful for initializing an event"""
@@ -679,6 +680,8 @@ class Event:
             plt.draw()
     
     def _update_display_fill(self, draw):
+        if self._hide:
+            return
         for plot_handle in self.plot_handles:
             plot_handle.remove()
         self.plot_handles = []
@@ -738,6 +741,8 @@ class Events:
             self.parent.add_key_binding(save_key, this_ev.save, f'Save {name}')
         if show:
             this_ev.setup_display()
+        else:
+            this_ev._hide = True # This is for fill displays
     
     def add_from_file(self, fname, data_id_func, ax_list=None, add_key=None, remove_key=None, save_key=None, show=True, **plot_kwargs):
         """Easier than using add for adding events that are created by another algorithm, and meant to be edited using the gui module."""
