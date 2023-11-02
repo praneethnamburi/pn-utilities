@@ -816,12 +816,12 @@ class Data: # Signal processing
     
     def resample(self, new_sr, *args, **kwargs):
         """args and kwargs will be passed to scipy.signal.resample"""
-        proc_sig = resample(self._sig, round(len(self)*new_sr/self.sr), axis=self.axis, *args, **kwargs)
+        proc_sig, proc_t = resample(self._sig, round(len(self)*new_sr/self.sr), t=self.t, axis=self.axis, *args, **kwargs)
         if hasattr(self, 'meta'):
             meta = self.meta
         else:
             meta = None
-        return self.__class__(proc_sig, sr=new_sr, axis=self.axis, history=self._history+[('resample', new_sr)], t0=self._t0, meta=meta)
+        return self.__class__(proc_sig, sr=new_sr, axis=self.axis, history=self._history+[('resample', new_sr)], t0=proc_t[0], meta=meta)
     
     def smooth(self, win_size=0.5):
         """Moving average smoothing while preserving the number of samples in the signal"""
