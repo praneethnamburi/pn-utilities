@@ -1282,6 +1282,8 @@ if not BLENDER_MODE:
         bar_color = kwargs.get('bar_color', 'darkblue')
         bar_alpha = kwargs.get('bar_alpha', 1)
         scatter_alpha = kwargs.get('scatter_alpha', 1)
+        bar_width = kwargs.get('bar_width', 0.05)
+        errorbar_width = kwargs.get('errorbar_width', bar_width*0.4)
         if xcat is None:
             x = np.asarray(x)
             y = np.asarray(y)
@@ -1313,9 +1315,9 @@ if not BLENDER_MODE:
             mu = np.nanmean(this_y)
             n = np.sum(~np.isnan(this_y))
             sem = np.nanstd(this_y)/np.sqrt(n)
-            ax.plot([this_x-0.05*x_mul, this_x-0.05*x_mul, this_x+0.05*x_mul, this_x+0.05*x_mul], [bar_start, mu, mu, bar_start], color=this_color_bar, linewidth=1.2, alpha=bar_alpha)
+            ax.plot([this_x-bar_width*x_mul, this_x-bar_width*x_mul, this_x+bar_width*x_mul, this_x+bar_width*x_mul], [bar_start, mu, mu, bar_start], color=this_color_bar, linewidth=1.2, alpha=bar_alpha)
             ax.plot([this_x, this_x], [mu, mu+sem], color=this_color_bar, linewidth=1.2, alpha=bar_alpha)
-            ax.plot([this_x-0.02*x_mul, this_x+0.02*x_mul], [mu+sem, mu+sem], color=this_color_bar, linewidth=1.2, alpha=bar_alpha)
+            ax.plot([this_x-errorbar_width*x_mul, this_x+errorbar_width*x_mul], [mu+sem, mu+sem], color=this_color_bar, linewidth=1.2, alpha=bar_alpha)
         ax.set_xticks(xcat, xcat)
         if plt_show:
             plt.show(block=False)
@@ -1345,8 +1347,8 @@ if not BLENDER_MODE:
         for col_num in range(len(col_names)):
             y += col_data[col_num]
             x += [col_num]*len(col_data[col_num])
-            scatter_color += [color_palette[col_num]]*len(col_data[col_num])
-            bar_color.append(color_palette[col_num])
+            scatter_color += [color_palette[col_num%len(color_palette)]]*len(col_data[col_num])
+            bar_color.append(color_palette[col_num%len(color_palette)])
         xcat = np.unique(np.array(x)[~np.isnan(x)])
 
         if ax is None:
@@ -1371,7 +1373,6 @@ if not BLENDER_MODE:
             yl = ax.get_ylim()
             yc = yl[0] + np.diff(yl)*0.93
             ax.plot(xcat, [yc]*2, color='black', linewidth=1.5)
-        f.tight_layout()
         if plt_show:
             plt.show(block=False)
         return ax
