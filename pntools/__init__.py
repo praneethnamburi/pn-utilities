@@ -1488,6 +1488,27 @@ def is_path_exists_or_creatable(pathname: str) -> bool:
         return False
 
 
+try:
+    import portion as P
+    # extend portion functionality in the class below
+    class PNInterval(P.Interval):
+        @property
+        def atomic_durations(self):
+            return [xi.upper - xi.lower for xi in self]
+        
+        @property
+        def duration(self):
+            return sum(self.atomic_durations)
+        
+        @property
+        def fraction(self):
+            # fractional duration relative to the enclosure
+            return self.duration/self.enclosure.duration
+        
+    portion = P.create_api(PNInterval)
+except ModuleNotFoundError:
+    print('portion is not installed in this environment. conda install -c conda-forge portion.')
+
 """
 Implimentation of Density-Based Clustering Validation "DBCV"
 

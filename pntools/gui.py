@@ -16,6 +16,7 @@ import io
 import json
 import os
 import inspect
+import functools
 from datetime import timedelta, datetime
 from pathlib import Path
 
@@ -696,6 +697,23 @@ class Event:
             self.plot_handles.append(this_collection)
         if draw:
             plt.draw()
+    
+    def to_dict(self):
+        event_data = self._data
+        if self.pick_action == 'overwrite':
+            ret = {k:v.get_times()[0] for k,v in event_data.items()}
+        else:
+            ret = {k:v.get_times() for k,v in event_data.items()}
+        return ret
+    
+    def to_portions(self):
+        assert self.size == 2
+        P = pn.portion
+        ret = {}
+        for signal_id, signal_events in self.to_dict().items():
+            ret[signal_id] = functools.reduce(lambda a,b: a|b, [P.closed(*interval_limits) for interval_limits in signal_events])
+        return ret
+    
 
 class Events:
     def __init__(self, parent):
