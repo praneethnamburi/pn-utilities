@@ -1340,6 +1340,12 @@ if not BLENDER_MODE:
             this_col_data = this_col_data[~np.isnan(this_col_data)]
             col_data[col_count] = list(this_col_data)
         color_palette = kwargs.get('color_palette', PLOT_COLORS)
+
+        # stats arguments
+        alternative = kwargs.pop('alternative', 'two-sided')
+        equal_var = kwargs.pop('equal_var', True)
+        permutations = kwargs.pop('permutations', None)
+
         x = []
         y = []
         scatter_color = []
@@ -1367,8 +1373,9 @@ if not BLENDER_MODE:
         else:
             n_str = lambda _ : ''
         ax.set_xticks(xcat, [x+'\n'+n_str(col_data) for x, col_data in zip(col_names, col_data)])
+
         if len(col_names) == 2 and kwargs.get('show_stats', True):
-            _, p_val = sstats.ttest_ind(col_data[0], col_data[1])
+            _, p_val = sstats.ttest_ind(col_data[0], col_data[1], alternative=alternative, equal_var=equal_var, permutations=permutations)
             ax.text(0.5, 0.94, p_str(p_val), transform=ax.transAxes, ha='center', va='bottom')
             yl = ax.get_ylim()
             yc = yl[0] + np.diff(yl)*0.93
