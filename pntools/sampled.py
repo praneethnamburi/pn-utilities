@@ -773,6 +773,8 @@ class Data: # Signal processing
         return self._clone(fn((pp_value, np.diff(self._sig, axis=self.axis, n=order)*self.sr)), ('diff', None))
     
     def magnitude(self):
+        if self._sig.ndim == 1:
+            return self
         assert self._sig.ndim == 2 # magnitude does not make sense for a 1D signal (in that case, use np.linalg.norm directly)
         return Data(np.linalg.norm(self._sig, axis=(self.axis+1)%2), self.sr, history=self._history+[('magnitude', 'None')])
 
