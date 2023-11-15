@@ -7,7 +7,7 @@ import numpy as np
 from scipy.signal import hilbert, firwin, filtfilt, butter, resample, iirnotch, welch
 from scipy.fft import fft, fftfreq
 from scipy.interpolate import interp1d
-from scipy.integrate import simps
+from scipy.integrate import simpson
 
 class Time:
     """
@@ -837,6 +837,22 @@ class Data: # Signal processing
     
     def ylim(self):
         return np.nanmin(self._sig), np.nanmax(self._sig)
+
+    def logdj(self, interpnan_maxgap=None):
+        """
+        CAUTION: makes sense ONLY if self is a velocity signal
+        Computes the log dimensionless jerk of marker velocity.
+        interpnan_maxgap - maximum gap (in number of samples) to interpolate.
+            - None (default) interpolates all gaps. Supply 0 to not interpolate.
+        """
+        vel = self.interpnan(maxgap=interpnan_maxgap)
+
+        dt = 1/self.sr
+        scale = np.power(self.dur, 3) / np.power(np.max(vel._sig), 2)
+
+        # jerk = vel.apply_to_each_signal(np.diff, 2).apply(lambda x: x/dt**2) # there is a small difference between the values when using diff and gradient.
+        jerk = vel.apply_to_each_signal(np.gradient, dt).apply_to_each_signal(np.gradient, dt)
+        return -np.log(scale * simpson(np.power(jerk.magnitude()(), 2), dx=dt))
 
 
 class DataList(list):
