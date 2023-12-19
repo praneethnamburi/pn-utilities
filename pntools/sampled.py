@@ -854,6 +854,46 @@ class Data: # Signal processing
         jerk = vel.apply_to_each_signal(np.gradient, dt).apply_to_each_signal(np.gradient, dt)
         return -np.log(scale * simpson(np.power(jerk.magnitude()(), 2), dx=dt))
 
+    def logdj2(self, interpnan_maxgap=None):
+        """
+        CAUTION: makes sense ONLY if self is a velocity signal
+        Computes the log dimensionless jerk of marker velocity. Variation with speed instead of velocity
+        interpnan_maxgap - maximum gap (in number of samples) to interpolate.
+            - None (default) interpolates all gaps. Supply 0 to not interpolate.
+        """
+        vel = self.interpnan(maxgap=interpnan_maxgap)
+
+        dt = 1/self.sr
+        scale = np.power(self.dur, 3) / np.power(np.max(vel._sig), 2)
+
+        jerk = vel.apply(np.gradient, dt).apply(np.gradient, dt)
+        return -np.log(scale * simpson(np.power(jerk(), 2), dx=dt))
+
+    def sparc(self, fc=10.0, amp_th=0.05, interpnan_maxgap=None):
+        """
+        CAUTION: makes sense ONLY if self is a speed signal
+        Computes the SPARC smoothness metric.
+        interpnan_maxgap - maximum gap (in number of samples) to interpolate.
+            - None (default) interpolates all gaps. Supply 0 to not interpolate.
+        """
+        vel = self.interpnan(maxgap=interpnan_maxgap).shift_baseline()
+        freq, Mfreq = vel.fft()
+
+        freq_sel = freq[freq <= fc]
+        Mfreq_sel = Mfreq[freq <= fc]
+
+        inx = ((Mfreq_sel >= amp_th) * 1).nonzero()[0]
+        fc_inx = range(inx[0], inx[-1] + 1)
+        freq_sel = freq_sel[fc_inx]
+        Mfreq_sel = Mfreq_sel[fc_inx]
+
+        # Calculate arc length
+        Mf_sel_diff = np.gradient(Mfreq_sel) / np.mean(np.diff(freq_sel))
+        fc = freq_sel[-1]
+        integrand = np.sqrt((1 / fc) ** 2 + Mf_sel_diff ** 2)
+        sparc = - simpson(integrand, freq_sel)
+        return sparc
+
 
 class DataList(list):
     def __call__(self, **kwargs):
