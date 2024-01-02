@@ -19,6 +19,15 @@ AUDIO_FILE_EXTENSIONS = ('.3gp', '.aa', '.aac', '.aax', '.act', '.aiff', '.alac'
 VIDEO_FILE_EXTENSIONS = ('.mkv', '.flv', '.vob', '.ogv', '.drc', '.avi', '.mov', '.wmv', '.yuv', '.mts', '.m2ts', '.ts', '.qt', '.rmvb', '.viv', '.asf', '.amv', '.mp4', '.m4p', '.m4v', 'mpg', '.mpe', '.mpv', '.mpeg', '.mp2', '.m2v', '.m4v', '.svi', '.3gp', '.3g2', '.mxf', '.roq', '.nsv', '.flv')
 AUDIO_OR_VIDEO_FILE_EXTENSIONS = ('.raw', '.webm', '.ogg', '.rm')
 
+def ffmpeg_is_found():
+    ret = subprocess.getoutput('ffmpeg -version')
+    if ret.startswith('ffmpeg version'):
+        return True
+    return False
+
+if not ffmpeg_is_found():
+    print('WARNING: ffmpeg not found. This video module will not work.')
+
 def _get_codec_types(vid_file:str):
     return subprocess.getoutput(f'ffprobe -loglevel error -show_entries stream=codec_type -of default=nw=1 "{vid_file}"')
 
