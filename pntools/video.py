@@ -15,6 +15,33 @@ from pytube import YouTube
 
 CLIP_FOLDER = 'C:\\data\\_clipcollection'
 
+AUDIO_FILE_EXTENSIONS = ('.3gp', '.aa', '.aac', '.aax', '.act', '.aiff', '.alac', '.amr', '.ape', '.au', '.awb', '.dss', '.dvf', '.flac', '.gsm', '.iklax', '.ivs', '.m4a', '.m4b', '.mmf', '.movpkg', '.mp3', '.mpc', '.msv', '.nmf', '.oga', '.mogg', '.opus', '.ra', '.rf64', '.sln', '.tta', '.voc', '.vox', '.wav', '.wma', '.wv', '.8svx', '.cda')
+VIDEO_FILE_EXTENSIONS = ('.mkv', '.flv', '.vob', '.ogv', '.drc', '.avi', '.mov', '.wmv', '.yuv', '.mts', '.m2ts', '.ts', '.qt', '.rmvb', '.viv', '.asf', '.amv', '.mp4', '.m4p', '.m4v', 'mpg', '.mpe', '.mpv', '.mpeg', '.mp2', '.m2v', '.m4v', '.svi', '.3gp', '.3g2', '.mxf', '.roq', '.nsv', '.flv')
+AUDIO_OR_VIDEO_FILE_EXTENSIONS = ('.raw', '.webm', '.ogg', '.rm')
+
+def _get_codec_types(vid_file:str):
+    return subprocess.getoutput(f'ffprobe -loglevel error -show_entries stream=codec_type -of default=nw=1 "{vid_file}"')
+
+def is_video(vid_file:str, verbose=False) -> bool:
+    codec_types = _get_codec_types(vid_file)
+    if verbose:
+        my_print = print
+    else:
+        my_print = lambda x:None
+
+    ret = False
+    if 'Invalid data' in codec_types:
+        my_print('Not an audio or video file')
+    if 'codec_type=video' in codec_types:
+        ret = True
+        my_print('Video stream found')
+    if 'codec_type=audio' in codec_types:
+        my_print('Audio stream found')
+    return ret
+
+def has_audio(vid_file:str) -> bool:
+    codec_types = _get_codec_types(vid_file)
+    return 'codec_type=audio' in codec_types
 
 def probe(vid_file):
     """return the output of ffprobe"""
@@ -97,11 +124,6 @@ def make_montage2x2(vid_files, vid_output=None, aud_file=None, overwrite=False):
         this_cmd = f'ffmpeg -y {vid_inputs}{aud_input_str} -filter_complex "[0:v][1:v][2:v][3:v]xstack=inputs=4:layout=0_0|w0_0|0_h0|w0_h0[v]" -map "[v]" {aud_map}-c:v h264_nvenc{aud_codec_str} "{vid_output}"'
         ret = subprocess.getoutput(this_cmd)
     return ret
-
-def has_audio(vid_file:str) -> bool:
-    """Does the video file have audio?"""
-    ret = subprocess.getoutput(f'ffprobe -i "{vid_file}" -show_streams -select_streams a -loglevel error')
-    return bool(ret)
 
 def separate_audio(vid_file:str):
     aud_file = os.path.join(Path(vid_file).parent, Path(vid_file).stem + '.aac')
