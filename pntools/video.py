@@ -103,8 +103,14 @@ def has_audio(vid_file:str) -> bool:
     ret = subprocess.getoutput(f'ffprobe -i "{vid_file}" -show_streams -select_streams a -loglevel error')
     return bool(ret)
 
+def separate_audio(vid_file:str):
+    aud_file = os.path.join(Path(vid_file).parent, Path(vid_file).stem + '.aac')
+    ret = subprocess.getoutput(f'ffmpeg -i "{vid_file}" -vn -acodec copy "{aud_file}"')
+    return ret
+
 def reencode(vid_files, out_files=None, preset='plain', overwrite=False):
     """
+    Often used to re-encode videos using ffmpeg to save disk space
     preset - 
         'plain' - (default) simply re-encodes with h264_nvenc code with default ffmpeg presets
         'color' - settings that were being used for re-encoding optitrack prime color cameras
@@ -124,7 +130,7 @@ def reencode(vid_files, out_files=None, preset='plain', overwrite=False):
         out_files = []
         for vid_file in vid_files:
             vf = Path(vid_file)
-            out_files.append(f'{vf.parent / vf.stem}{"_reencode" if vf.suffix==".mp4" else ""}.mp4')
+            out_files.append(f'{vf.parent / vf.stem}{"_reencode" if vf.suffix.lower()==".mp4" else ""}.mp4')
 
     if isinstance(out_files, str):
         out_files = [out_files]
