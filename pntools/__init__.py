@@ -615,7 +615,7 @@ def file_size(file_list, units='MB'):
 
 class FileManager:
     """
-    Easy to use file search. Useful for managing files in not-so-obviously organized folders.
+    Easy to use file search and file path management. Useful for managing files in not-so-obviously organized folders.
 
     Usage: 
         TL;DR
@@ -654,6 +654,10 @@ class FileManager:
             other_videos = fm['video']
         4. Generate a report for the different file types (number of files, and space occupied)
             fm.report()
+    
+    Consider the functionality from these repositories before finishing the package (perhaps for a future version)
+    https://pypi.org/project/pathfinder/
+
     """
     def __init__(self, base_dir, exclude_hidden=True):
         assert isinstance(base_dir, str)
@@ -676,7 +680,7 @@ class FileManager:
             pattern_list = [pattern_list]
         self._files[type_name] = []
         for pattern in pattern_list:
-            self._files[type_name] += self.find(pattern, path=self.base_dir, exclude_hidden=exclude_hidden)
+            self._files[type_name] += self._find(pattern, path=self.base_dir, exclude_hidden=exclude_hidden)
         self._filters[type_name] = pattern_list
         self._inclusions[type_name] = []
         self._exclusions[type_name] = []
@@ -720,8 +724,16 @@ class FileManager:
         self._exclusions[type_name].append(exclusion_string)
 
     def __getitem__(self, key):
-        assert key in self._files
-        return self._files[key]
+        if key in self._files:
+            return self._files[key]
+        all_files = self.all_files
+        stem_to_path = {Path(x).stem:x for x in all_files}
+        # full-stem search
+        if key in stem_to_path:
+            return stem_to_path[key]
+        # loose search - full path contains
+        return [x for x in all_files if key in x]
+        
     
     def types(self):
         return self._files.keys()
@@ -735,11 +747,11 @@ class FileManager:
 
     def report(self, units='MB'):
         for file_type, file_list in self._files.items():
-            fs = sum(list(file_size(file_list, units=units).values()))
+            fs = sum(list(self._file_size(file_list, units=units).values()))
             print(str(len(file_list)) + ' ' + file_type + ' files taking up {:4.3f} '.format(fs) + units)
     
     @staticmethod
-    def find(pattern, path=None, exclude_hidden=True):
+    def _find(pattern, path=None, exclude_hidden=True):
         "Example: find('*.txt', '/path/to/dir')"
         if path is None:
             path = os.getcwd()
@@ -754,6 +766,21 @@ class FileManager:
         if exclude_hidden:
             return [r for r in result if not (r.split(os.sep)[-1].startswith('~$') or r.split(os.sep)[-1].startswith('.'))]
         return result
+    
+    @staticmethod
+    def _file_size(file_list, units='MB'):
+        """
+        Returns files sizes in descending order (default: megabytes)
+        """
+        div = {'B':1, 'KB':1024, 'MB':1024**2, 'GB':1024**3, 'TB':1024**4}
+        if isinstance(file_list, str):
+            file_list = [file_list]
+        assert isinstance(file_list, list)
+        size_mb = {os.path.getsize(f)/div[units]:f for f in file_list} # {size: file_name}
+        size_list = list(size_mb.keys())
+        size_list.sort(reverse=True)
+        return {size_mb[s]:s for s in size_list} # {file_name : size}
+    
 
 
 ## Package management
