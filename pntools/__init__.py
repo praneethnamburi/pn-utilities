@@ -1578,6 +1578,58 @@ def is_path_exists_or_creatable(pathname: str) -> bool:
     except OSError:
         return False
 
+def is_numeric(s:str) -> bool:
+    """Is a string numeric"""
+    assert isinstance(s, str)
+    return s.removeprefix('-').replace('.','',1).replace('e-','',1).replace('e','',1).isdigit()
+
+def to_number(s:str):
+    """If string is a number, return the number, otherwise return the original string"""
+    if not isinstance(s, str):
+        return s
+    if is_numeric(s):
+        return eval(s)
+    return s
+
+# wrapper around dateutil to check if a string is or has a date
+try: # YET to be tested thoroughly
+    from dateutil.parser import parse
+    def is_date(s:str) -> bool:
+        """Check is string is a date"""
+        try: 
+            parse(s, fuzzy=False)
+            return True
+        except ValueError:
+            return False
+    
+    def has_date(s:str) -> bool:
+        """Check is string is a date"""
+        try: 
+            parse(s, fuzzy=True)
+            return True
+        except ValueError:
+            return False
+    
+    def to_date(s:str, strict=False):
+        if not isinstance(s, str):
+            return s
+        if strict:
+            if is_date(s):
+                return parse(s, fuzzy=False)
+            return s
+
+        if has_date(s):
+            if is_date(s):
+                return parse(s, fuzzy=False)
+            return parse(s, fuzzy_with_tokens=True)[0]
+        return s # doesn't have a date, function doesn't do any transform
+
+    def to_date_or_number(s:str):
+        return to_date(to_number(s), strict=True)
+    
+except (ModuleNotFoundError, ImportError):
+        raise('Install python-dateutil to use pntools.is_date. e.g. pip install python-dateutil')
+
 
 try:
     import portion as P
