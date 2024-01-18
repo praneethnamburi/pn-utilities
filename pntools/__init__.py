@@ -1652,6 +1652,36 @@ try:
 except ModuleNotFoundError:
     print('portion is not installed in this environment. conda install -c conda-forge portion.')
 
+def apply_to_files(file_selectors, include=(), exclude=(), ret_type=list):
+    """Decorator for functions/classes whose first argument is a file name. 
+    For these functions/classes, if a folder is supplied instead of a file name, 
+    the decorator will find all the relevant files and apply the decorated function to each file.
+    Apply func to all files in a folder."""
+    if isinstance(file_selectors, str):
+        file_selectors = [file_selectors]
+    assert ret_type in (list, dict, 'stem') # stem returns a dict with the keys as stems of the filenames as opposed to the full file name
+    def wrapper(func):
+        def inner_func(fname, *args, **kwargs):
+            if os.path.isdir(fname):
+                fm = FileManager(fname)
+                for file_selector_count, file_selector in enumerate(file_selectors):
+                    fm.add(str(file_selector_count), file_selector, include=include, exclude=exclude)
+                if ret_type == list:
+                    return [func(file_name, *args, **kwargs) for file_name in fm.all_files]
+                if ret_type == 'stem':
+                    return {Path(file_name).stem:func(file_name, *args, **kwargs) for file_name in fm.all_files}
+                assert ret_type == dict
+                return {file_name:func(file_name, *args, **kwargs) for file_name in fm.all_files}
+            else:
+                return func(fname, *args, **kwargs)
+        return inner_func
+    return wrapper
+
+@apply_to_files('*.*')
+def test_apply_to_files(fname):
+    print(fname)
+
+
 """
 Implimentation of Density-Based Clustering Validation "DBCV"
 
