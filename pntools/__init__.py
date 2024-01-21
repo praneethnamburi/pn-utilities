@@ -741,7 +741,7 @@ class FileManager:
     @property
     def all_files(self):
         ret = []
-        for ftype in self.types():
+        for ftype in self.get_types()):
             ret += self[ftype]
         return ret
 
