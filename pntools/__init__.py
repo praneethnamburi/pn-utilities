@@ -31,7 +31,7 @@ try:
 except ImportError:
     BLENDER_MODE = False
 
-from pyfilemanager import FileManager    
+from pyfilemanager import FileManager, find, get_file_size
 
 ## Inheritance
 class AddMethods:
@@ -547,21 +547,6 @@ def ospath(thingToFind, errContent=None):
     print('Did not find ', errContent)
     return ''
 
-def find(pattern, path=None, exclude_hidden=True):
-    "Example: find('*.txt', '/path/to/dir')"
-    if path is None:
-        path = os.getcwd()
-        
-    result = []
-    for root, dirs, files in os.walk(path):
-        for name in files:
-            if fnmatch.fnmatch(name, pattern):
-                result.append(os.path.join(root, name))
-
-    if exclude_hidden:
-        return [r for r in result if not (r.split(os.sep)[-1].startswith('~$') or r.split(os.sep)[-1].startswith('.'))]
-    return result
-
 def change_image_dpi(files, dpi:int=300, return_format:str='tif'):
     """
     Change the dpi of a set of images, example - for publication
@@ -600,19 +585,6 @@ def run(filename, start_line=1, end_line=None):
     if end_line is None:
         end_line = len(code)
     exec(''.join(code[(start_line-1):end_line]))
-
-def file_size(file_list, units='MB'):
-        """
-        Returns files sizes in descending order (default: megabytes)
-        """
-        div = {'B':1, 'KB':1024, 'MB':1024**2, 'GB':1024**3, 'TB':1024**4}
-        if isinstance(file_list, str):
-            file_list = [file_list]
-        assert isinstance(file_list, list)
-        size_mb = {os.path.getsize(f)/div[units]:f for f in file_list} # {size: file_name}
-        size_list = list(size_mb.keys())
-        size_list.sort(reverse=True)
-        return {size_mb[s]:s for s in size_list} # {file_name : size}
 
 
 ## Package management

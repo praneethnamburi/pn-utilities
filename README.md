@@ -42,10 +42,10 @@ Communication (with external processes).
     * locate_command - locate an executable in the system path
     * OnDisk         - (Decorator) Raise error if function output file is not on disk
     * ospath         - Find file or directory
-    * find           - Find a file (accepts patterns)
     * run            - Run the contents of a file in the console
-    * file_size      - Return size of a list of files in descending order
-    * FileManager    - Manage files in a project
+    * FileManager    - (from pyfilemanager) Manage files in a project
+    * find           - (from pyfilemanager) Find a file (accepts patterns)
+    * get_file_size  - (from pyfilemanager) Return size of a list of files in descending order
 
 **Package management:** (mostly useful during deployment)  
 
