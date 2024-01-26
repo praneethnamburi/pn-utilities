@@ -31,7 +31,7 @@ try:
 except ImportError:
     BLENDER_MODE = False
 
-from pyfilemanager import FileManager, find, get_file_size
+from pyfilemanager import FileManager, find, get_file_sizes
 
 ## Inheritance
 class AddMethods:

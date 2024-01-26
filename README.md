@@ -45,7 +45,7 @@ Communication (with external processes).
     * run            - Run the contents of a file in the console
     * FileManager    - (from pyfilemanager) Manage files in a project
     * find           - (from pyfilemanager) Find a file (accepts patterns)
-    * get_file_size  - (from pyfilemanager) Return size of a list of files in descending order
+    * get_file_sizes - (from pyfilemanager) Return size of a list of files in descending order
 
 **Package management:** (mostly useful during deployment)  
 
