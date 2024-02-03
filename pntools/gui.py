@@ -1366,6 +1366,9 @@ class VideoPointAnnotator(VideoBrowser):
     Point your mouse at a desired location in the video and press the forward slash / button to add a point annotation.
     When you're done, press 's' to save your work, which will create a '<video name>_annotatoins.json' file in the same folder as the video file.
     These annotations will be automagically loaded when you try to annotate this file again.
+
+    If you're doing one label at a time, then pick the frames for the first label arbitrarily.
+    For the second label onwards, 
     """
     def __init__(self, vid_name, titlefunc=None, figure_handle=None):
         super().__init__(vid_name, titlefunc, figure_handle)
@@ -1378,30 +1381,37 @@ class VideoPointAnnotator(VideoBrowser):
 
         self._current_label = '0'
         self._current_label_text = TextView([f'Current label: {self._current_label}'], self.figure, pos='bottom center')
-        self.mpl_remove_bindings(['/', '.'])
 
         self.plot_handles = {}
         self.palette = sns.color_palette('Set2', max([int(x) for x in self.annotations.keys()])+1)
         for label, color in zip(self.annotations, self.palette):
             self.plot_handles[f'label_{label}'], = self._ax.plot([], [], 'o', color=color)
 
+        self.add_key_binding('/', self.add_annotation)
+        self.add_key_binding('t', self.add_annotation)
+        self.add_key_binding('.', self.remove_annotation)
+        self.add_key_binding('y', self.remove_annotation)
+
+        self.add_key_binding('n', self.next_annotation)
+        self.add_key_binding('p', self.previous_annotation)
+        self.add_key_binding('f', self.increment_if_0_is_unannotated)
+        self.add_key_binding('g', self.increment)
+        self.add_key_binding('d', self.decrement_if_0_is_unannotated)
+
         plt.show(block=False)
         self.update()
     
+    def get_annotated_frames(self, label=None):
+        """Return a list of frames that are annotated with the current label."""
+        if label is None:
+            label = self._current_label
+        return [int(x) for x in self.annotations[label].keys()]
+    
     def __call__(self, event):
         super().__call__(event)
-        if event.name == 'key_press_event':
-            current_label = self._current_label
-            frame_number = str(self._current_idx)
-            if event.key == '/': # Add annotation at frame. If it exists, it'll get overwritten.
-                self.annotations[current_label][frame_number] = float(event.xdata), float(event.ydata)
-                self.update()
-            elif event.key == '.': # remove annotation at the current frame if it exists
-                self.annotations[current_label].pop(frame_number, None)
-                self.update()
-            elif event.key in self.annotations:
-                self._current_label = event.key
-                self.update_current_label_text(draw=True)
+        if event.name == 'key_press_event' and event.key in self.annotations:
+            self._current_label = event.key
+            self.update_current_label_text(draw=True)
     
     def update(self):
         self.update_annotation_display(draw=False)
@@ -1424,6 +1434,16 @@ class VideoPointAnnotator(VideoBrowser):
         if draw:
             plt.draw()
 
+    def add_annotation(self, event):
+        # Add annotation at frame. If it exists, it'll get overwritten.
+        self.annotations[self._current_label][str(self._current_idx)] = float(event.xdata), float(event.ydata)
+        self.update()
+    
+    def remove_annotation(self, event=None):
+        # remove annotation at the current frame if it exists
+        self.annotations[self._current_label].pop(str(self._current_idx), None)
+        self.update()
+
     def load_annotations(self, event=None):
         if os.path.exists(self.fname_annotations):
             with open(self.fname_annotations, 'r') as f:
@@ -1433,6 +1453,30 @@ class VideoPointAnnotator(VideoBrowser):
     def save_annotations(self, event=None):
         with open(self.fname_annotations, 'w') as f:
             json.dump(self.annotations, f, indent=4)
+    
+    def next_annotation(self, event=None):
+        try:
+            current_frame = self._current_idx
+            self._current_idx = min([x for x in self.get_annotated_frames() if x > current_frame])
+            self.update()
+        except ValueError:
+            return
+    
+    def previous_annotation(self, event=None):
+        try:
+            current_frame = self._current_idx
+            self._current_idx = max([x for x in self.get_annotated_frames() if x < current_frame])
+            self.update()
+        except ValueError:
+            return
+    
+    def increment_if_0_is_unannotated(self, event=None):
+        if self._current_idx not in self.get_annotated_frames('0'):
+            self.increment()
+    
+    def decrement_if_0_is_unannotated(self, event=None):
+        if self._current_idx not in self.get_annotated_frames('0'):
+            self.decrement()
 
 class TextView:
     """Show text array line by line"""
