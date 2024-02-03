@@ -172,6 +172,8 @@ def reencode(vid_files, out_files=None, preset='plain', overwrite=False):
         cmd_post = f'"{out_file}"'
         if preset == 'plain':
             cmd = f'{cmd_pre} -c:v h264_nvenc {cmd_post}'
+        elif preset == 'quality':
+            cmd = f'{cmd_pre} -c:v h264_nvenc -q:v 0 {cmd_post}'
         elif preset == 'color':
             cmd = f'{cmd_pre} -c:v h264_nvenc -vsync vfr -b:v 12M -an {cmd_post}'
         elif preset == 'reference':
