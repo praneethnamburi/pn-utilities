@@ -1102,9 +1102,9 @@ class SignalBrowser(GenericBrowser):
         self._ax = self.figure.subplots(1, 1)
         this_data = plot_data[0]
         if isinstance(this_data, sampled.Data):
-            self._plot = self._ax.plot(this_data.t, this_data())[0]
+            self._plot = self._ax.plot(this_data.t, this_data())
         else:
-            self._plot = self._ax.plot(this_data)[0]
+            self._plot = self._ax.plot(this_data)
 
         self.data = plot_data
         if titlefunc is None:
@@ -1125,7 +1125,9 @@ class SignalBrowser(GenericBrowser):
     def update(self, event=None):
         this_data = self.data[self._current_idx]
         if isinstance(this_data, sampled.Data):
-            self._plot.set_data(this_data.t, this_data())
+            data_to_plot = this_data.split_to_1d()
+            for plot_handle, this_data_to_plot in zip(self._plot, data_to_plot):
+                plot_handle.set_data(this_data_to_plot.t, this_data_to_plot())
         else:
             self._plot.set_ydata()
         self._ax.set_title(self.titlefunc(self))
@@ -1185,9 +1187,19 @@ class TestIntervalEvents(SignalBrowser):
         return super().update(event)
 
 class VideoBrowser(GenericBrowser):
-    """Scroll through images of a video"""
-    def __init__(self, vid_name, titlefunc=None, figure_handle=None):
+    """Scroll through images of a video
+
+        If figure_handle is an axis handle, the video will be plotted in that axis.
+    """
+    def __init__(self, vid_name, titlefunc=None, figure_or_ax_handle=None):
         from decord import VideoReader
+        assert isinstance(figure_or_ax_handle, (plt.Axes, plt.Figure, type(None)))
+        if isinstance(figure_or_ax_handle, plt.Axes):
+            figure_handle = figure_or_ax_handle.figure
+            ax_handle = figure_or_ax_handle
+        else: # this is the same if figure_or_ax_handle is none or a figure handle
+            figure_handle = figure_or_ax_handle
+            ax_handle = None
         super().__init__(figure_handle)
 
         if not os.path.exists(vid_name): # try looking in the CLIP FOLDER
@@ -1198,12 +1210,16 @@ class VideoBrowser(GenericBrowser):
         with open(vid_name, 'rb') as f:
             self.data = VideoReader(f)
         
-        self._ax = self.figure.subplots(1, 1)
+        if ax_handle is None:
+            self._ax = self.figure.subplots(1, 1)
+        else:
+            assert isinstance(ax_handle, plt.Axes)
+            self._ax = ax_handle
         this_data = self.data[0]
         self._im = self._ax.imshow(this_data.asnumpy())
+        self._ax.axis('off')
 
         self.fps = self.data.get_avg_fps()
-        plt.axis('off')
         if titlefunc is None:
             self.titlefunc = lambda s: f'Frame {s._current_idx}/{len(s)}, {s.fps} fps, {str(timedelta(seconds=s._current_idx/s.fps))}'
         
@@ -1370,8 +1386,9 @@ class VideoPointAnnotator(VideoBrowser):
     If you're doing one label at a time, then pick the frames for the first label arbitrarily.
     For the second label onwards, 
     """
-    def __init__(self, vid_name, titlefunc=None, figure_handle=None):
-        super().__init__(vid_name, titlefunc, figure_handle)
+    def __init__(self, vid_name, labels_pos: dict=None, titlefunc=None):
+        figure_handle, _ax = plt.subplots(1, 1) # height_ratiors=[4,1,1]
+        super().__init__(vid_name, titlefunc, _ax)
         self.memoryslots.hide()
         self.memoryslots.disable()
 
@@ -1386,6 +1403,10 @@ class VideoPointAnnotator(VideoBrowser):
         self.palette = sns.color_palette('Set2', max([int(x) for x in self.annotations.keys()])+1)
         for label, color in zip(self.annotations, self.palette):
             self.plot_handles[f'label_{label}'], = self._ax.plot([], [], 'o', color=color)
+            self.plot_handles[f'trace_{label}'], = self._ax.plot([], [], color=color)
+
+        self.labels_pos = self._parse_labels_pos(labels_pos)
+        self.pick_event = None
 
         self.add_key_binding('/', self.add_annotation)
         self.add_key_binding('t', self.add_annotation)
@@ -1398,8 +1419,34 @@ class VideoPointAnnotator(VideoBrowser):
         self.add_key_binding('g', self.increment)
         self.add_key_binding('d', self.decrement_if_0_is_unannotated)
 
+        # self.cid.append(self.figure.canvas.mpl_connect('pick_event', self.onpick))
+        # self.cid.append(self.figure.canvas.mpl_connect('button_press_event', self.place_selected_label))
+        # self.cid.append(self.figure.canvas.mpl_connect('button_press_event', self.go_to_frame))
+
         plt.show(block=False)
         self.update()
+    
+    def _parse_labels_pos(self, labels_pos):
+        if labels_pos is None:
+            labels_pos = {}
+        
+        ret = {}
+        for this_label in self.annotations:
+            if this_label in labels_pos:
+                ret[this_label] = labels_pos[this_label]
+            else:
+                ret[this_label] = np.array([[np.nan, np.nan]])
+        return ret
+
+    def onpick(self, event):
+        print('Onpick Activated')
+        print(event.__dict__)
+        if event.mouseevent.button.name == 'LEFT' and len(event.ind == 1):
+            self.pick_event = event
+            label_names = list(self.annotations.keys())
+            print(f'Picked {label_names[event.ind[0]]} with index {event.ind[0]} at frame {self._current_idx}')
+            self.update()
+            self.reset_axes()
     
     def get_annotated_frames(self, label=None):
         """Return a list of frames that are annotated with the current label."""
