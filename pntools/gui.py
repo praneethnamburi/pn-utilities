@@ -22,6 +22,7 @@ from pathlib import Path
 
 import ffmpeg
 import numpy as np
+import pandas as pd
 
 import seaborn as sns
 import matplotlib as mpl
@@ -34,11 +35,10 @@ from matplotlib.path import Path as mPath
 from matplotlib.gridspec import GridSpec
 
 import pntools as pn
-from pntools import sampled
+from pntools import sampled, video
 
 
 CLIP_FOLDER = 'C:\\data\\_clipcollection'
-
 
 ### Helper functions
 def _parse_fax(fax, ax_pos=(0.01, 0.01, 0.98, 0.98)):
@@ -1415,9 +1415,9 @@ class VideoPointAnnotator(VideoBrowser):
 
         self.add_key_binding('n', self.next_annotation)
         self.add_key_binding('p', self.previous_annotation)
-        self.add_key_binding('f', self.increment_if_0_is_unannotated)
+        self.add_key_binding('f', self.increment_if_unannotated)
         self.add_key_binding('g', self.increment)
-        self.add_key_binding('d', self.decrement_if_0_is_unannotated)
+        self.add_key_binding('d', self.decrement_if_unannotated)
 
         # self.cid.append(self.figure.canvas.mpl_connect('pick_event', self.onpick))
         # self.cid.append(self.figure.canvas.mpl_connect('button_press_event', self.place_selected_label))
@@ -1517,13 +1517,212 @@ class VideoPointAnnotator(VideoBrowser):
         except ValueError:
             return
     
-    def increment_if_0_is_unannotated(self, event=None):
-        if self._current_idx not in self.get_annotated_frames('0'):
+    @property
+    def label_names(self):
+        return list(self.annotations.keys())
+    
+    @property
+    def all_annotated_frames(self):
+        return set([frame for label_name in self.label_names for frame in self.get_annotated_frames(label_name)])
+    
+    def increment_if_unannotated(self, event=None):
+        if self._current_idx not in self.all_annotated_frames:
             self.increment()
     
-    def decrement_if_0_is_unannotated(self, event=None):
-        if self._current_idx not in self.get_annotated_frames('0'):
+    def decrement_if_unannotated(self, event=None):
+        if self._current_idx not in self.all_annotated_frames:
             self.decrement()
+
+
+class VideoAnnotation:
+    def __init__(self, fname: str=None, vname: str=None):
+        if vname is None and video.is_video(fname):
+            vname = fname
+            fname = os.path.join(Path(vname).parent, Path(vname).stem + '_annotations.json')
+
+        self.fname = fname
+        if fname is not None:
+            self.name = Path(fname).stem
+        else:
+            self.name = None
+
+        if video.is_video(vname):
+            self.video = video.Video(vname)
+        else:
+            self.video = None
+        
+        self.data = self.load()
+
+    @classmethod
+    def from_dlc(cls, dlc_fname, vname=None, remove_label_prefix='point', img_prefix='img', img_suffix='.png'):
+        """Load annotations from a deeplabcut h5 file."""
+        if isinstance(dlc_fname, pd.DataFrame):
+            df = dlc_fname
+            fname = None
+        else:
+            assert os.path.exists(dlc_fname)
+            assert Path(dlc_fname).suffix == '.h5'
+            df = pd.read_hdf(dlc_fname)
+            fname = Path(dlc_fname).with_suffix('.json')
+            if os.path.exists(fname):
+                fname = None
+        
+        obj = cls(fname, vname)
+        
+        obj.data = obj._dlc_df_to_annotation_dict(df, remove_label_prefix, img_prefix, img_suffix)
+        return obj
+    
+    @staticmethod
+    def _dlc_df_to_annotation_dict(df, remove_label_prefix='point', img_prefix='img', img_suffix='.png'):
+        labels = [x.removeprefix(remove_label_prefix) for x in df.columns.levels[1]]
+        frames_str = [x.removeprefix(img_prefix).removesuffix(img_suffix) for x in df.index.levels[-1]]
+
+        data = {label: {} for label in labels}
+        video_stem = df.index.levels[1].values[0]
+        scorer = df.columns.levels[0].values[0]
+        for label in labels:
+            for frame_str in frames_str:
+                coord_val = [
+                    df.loc['labeled-data', video_stem, f'{img_prefix}{frame_str}{img_suffix}']
+                        [scorer, f'{remove_label_prefix}{label}', coord_name] 
+                    for coord_name in ('x', 'y')
+                    ]
+                if np.all(np.isnan(coord_val)):
+                    continue
+                data[label][int(frame_str)] = coord_val
+        
+        return data
+    
+    def __len__(self):
+        """Number of annotations"""
+        return len(self.data)
+    
+    @property
+    def n_frames(self):
+        """Number of frames in the video being annotated"""
+        if self.video is None:
+            return None
+        return len(self.video)
+    
+    @property
+    def n_annotations(self):
+        return len(self)
+    
+    @property
+    def labels(self):
+        return list(self.data.keys())
+    
+    @property
+    def frames(self):
+        ret = list(set([frame for label in self.labels for frame in self.get_frames(label)]))
+        ret.sort()
+        return ret
+
+    @property
+    def frames_overlapping(self):
+        ret = list(functools.reduce(set.intersection, [set(self.get_frames(label)) for label in self.labels]))
+        ret.sort()
+        return ret
+    
+    def get_frames(self, label):
+        """Return a list of frames that are annotated with the current label."""
+        assert label in self.labels
+        return list(self.data[label].keys())
+    
+    def load(self, n_annotations=10):
+        if self.fname is not None and os.path.exists(self.fname):
+            with open(self.fname, 'r') as f:
+                ret = {}
+                for k,v in json.load(f).items():
+                    if v:
+                        ret[k] = {int(frame_num):loc for frame_num, loc in v.items()}
+                return ret
+        return {str(label):{} for label in range(n_annotations)}
+        
+    def save(self, fname=None):
+        if fname is None:
+            assert self.fname is not None
+            fname = self.fname
+        self.sort_data()
+        with open(self.fname, 'w') as f:
+            json.dump(self.data, f, indent=4)
+    
+    def sort_data(self):
+        # zfill the keys for sorting
+        self.data = {label:dict(sorted(self.data[label].items())) for label in self.labels}
+    
+    def get_values_cv(self, frame_num: int):
+        """Return annotations in a format for openCV's optical flow algorithms"""
+        return np.array(
+            self.get_at_frame(frame_num), 
+            dtype=np.float32).reshape((self.n_annotations, 1, 2)
+            )
+    
+    def _n_digits_in_frame_num(self):
+        if self.n_frames is None:
+            return '6'
+        return str(len(str(self.n_frames)))
+
+    def _frame_num_as_str(self, frame_num: int):
+        return f'{frame_num:0{self._n_digits_in_frame_num()}}'
+    
+    def add_at_frame(self, frame_num: int, values: np.ndarray):
+        assert isinstance(frame_num, int)
+        values = np.array(values)
+        assert values.shape == (self.n_annotations, 2)
+        for label, value in zip(self.labels, values):
+            self.data[label][frame_num] = list(value)
+    
+    def get_at_frame(self, frame_num: int):
+        ret = []
+        for label in self.labels:
+            if frame_num in self.data[label]:
+                ret.append(self.data[label][frame_num])
+            else:
+                ret.append([np.nan, np.nan])
+        return ret
+    
+    def __getitem__(self, key):
+        if key in self.labels:
+            return self.data[key]
+        if key in self.frames:
+            return self.get_at_frame(key)
+        raise ValueError(f'{key} is neither an annotation nor a frame with annotation.')
+    
+    def to_dlc(self, scorer='praneeth', output_path=None, file_prefix=None, img_prefix='img', img_suffix='.png', label_prefix='point', save=True):
+        """Save annotations in deeplabcut format."""
+        annotations = self.data
+        video_stem = self.video.name
+        
+        if output_path is None:
+            output_path = Path(self.fname).parent
+        output_path = Path(output_path)
+
+        index_length = self._n_digits_in_frame_num()
+        img_stems = [f'{img_prefix}{x:0{index_length}}{img_suffix}' for x in self.frames]
+        
+        row_idx = pd.MultiIndex.from_tuples([('labeled-data', video_stem, img_stem) for img_stem in img_stems])
+        col_idx = pd.MultiIndex.from_product([[scorer], [f'point{x}' for x in annotations], ['x', 'y']], names = ['scorer', 'bodyparts', 'coords'])
+        df = pd.DataFrame([], index=row_idx, columns=col_idx)
+        for annotation_label, annotation_dict in annotations.items():
+            for frame, xy in annotation_dict.items():
+                for coord_name, coord_val in zip(('x', 'y'), xy):
+                    df.loc['labeled-data', video_stem, f'{img_prefix}{frame:0{index_length}}{img_suffix}'][scorer, f'{label_prefix}{annotation_label}', coord_name] = coord_val
+        df = df.apply(lambda col:pd.to_numeric(col, errors='coerce'))
+
+        if file_prefix is None:
+            file_prefix = self.name
+        elif file_prefix == 'dlc': # usual dlc name
+            file_prefix = f"CollectedData_{scorer}"
+        else:
+            assert isinstance(file_prefix, str)
+
+        if save:
+            labeled_data_file_prefix = str(output_path / file_prefix)
+            df.to_csv(labeled_data_file_prefix + '.csv')
+            df.to_hdf(labeled_data_file_prefix + '.h5', key="df_with_missing", mode="w")
+        return df
+
 
 class TextView:
     """Show text array line by line"""

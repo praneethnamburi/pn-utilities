@@ -11,6 +11,8 @@ import time
 from pathlib import Path
 
 import ffmpeg
+from decord import VideoReader, cpu, gpu
+import cv2 as cv
 from pytube import YouTube
 
 CLIP_FOLDER = 'C:\\data\\_clipcollection'
@@ -184,6 +186,16 @@ def reencode(vid_files, out_files=None, preset='plain', overwrite=False):
             raise ValueError(f'Unknown preset {preset}')
         ret.append(subprocess.getoutput(cmd))
     return ret
+
+class Video(VideoReader):
+    def __init__(self, uri, ctx=cpu(0), width=-1, height=-1, num_threads=0, fault_tol=-1):
+        assert os.path.exists(uri) and is_video(uri)
+        self.fname = uri
+        self.name = Path(uri).stem
+        super().__init__(uri, ctx, width, height, num_threads, fault_tol)
+
+    def gray(self, frame_num: int):
+        return cv.cvtColor(self[frame_num].asnumpy(), cv.COLOR_BGR2GRAY)
 
 def download(url, start_time=None, end_time=None, dur=None, full_file=False):
     """
