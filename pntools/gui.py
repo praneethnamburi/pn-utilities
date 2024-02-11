@@ -1535,7 +1535,21 @@ class VideoPointAnnotator(VideoBrowser):
 
 
 class VideoAnnotation:
-    def __init__(self, fname: str=None, vname: str=None):
+    """Manage point annotations in video.
+
+    Args:
+        fname (str, optional): File name of the annotations (.json) file. If it
+            doesn't exist, it will be created when save method is used. If this is a
+            video file, fname will default to <video_name>_annotations.json.
+            Defaults to None.
+        vname (str, optional): Name of the video being annotated. Defaults to None.
+    
+    Methods:
+        from_dlc : Load data from a deeplabcut .h5 file
+        to_dlc: Convert from json file format into a deeplabcut dataframe format, and optionally save the file.
+    
+    """
+    def __init__(self, fname: str=None, vname: str=None):       
         if vname is None and video.is_video(fname):
             vname = fname
             fname = os.path.join(Path(vname).parent, Path(vname).stem + '_annotations.json')
@@ -1606,20 +1620,24 @@ class VideoAnnotation:
     
     @property
     def n_annotations(self):
+        """Number of points being annotated in the video."""
         return len(self)
     
     @property
     def labels(self):
+        """Labels of the annotations."""
         return list(self.data.keys())
     
     @property
     def frames(self):
+        """Frame numbers in the video that have annotations."""
         ret = list(set([frame for label in self.labels for frame in self.get_frames(label)]))
         ret.sort()
         return ret
 
     @property
     def frames_overlapping(self):
+        """List of frames in the video where all the labels are annotated."""
         ret = list(functools.reduce(set.intersection, [set(self.get_frames(label)) for label in self.labels]))
         ret.sort()
         return ret
@@ -1630,6 +1648,7 @@ class VideoAnnotation:
         return list(self.data[label].keys())
     
     def load(self, n_annotations=10):
+        """Load annotations from a json file, or initialize an annotation dictionary if a file doesn't exist."""
         if self.fname is not None and os.path.exists(self.fname):
             with open(self.fname, 'r') as f:
                 ret = {}
@@ -1640,33 +1659,37 @@ class VideoAnnotation:
         return {str(label):{} for label in range(n_annotations)}
         
     def save(self, fname=None):
+        """Save the annotations json file. self.fname should be a valid file path."""
         if fname is None:
             assert self.fname is not None
             fname = self.fname
         self.sort_data()
-        with open(self.fname, 'w') as f:
+        with open(fname, 'w') as f:
             json.dump(self.data, f, indent=4)
     
     def sort_data(self):
-        # zfill the keys for sorting
+        """Sort annotations by the frame numbers."""
         self.data = {label:dict(sorted(self.data[label].items())) for label in self.labels}
     
     def get_values_cv(self, frame_num: int):
-        """Return annotations in a format for openCV's optical flow algorithms"""
+        """Return annotations at frame_num in a format for openCV's optical flow algorithms"""
         return np.array(
             self.get_at_frame(frame_num), 
             dtype=np.float32).reshape((self.n_annotations, 1, 2)
             )
     
     def _n_digits_in_frame_num(self):
+        """Number of digits to use when constructing a string from the frame number."""
         if self.n_frames is None:
             return '6'
         return str(len(str(self.n_frames)))
 
     def _frame_num_as_str(self, frame_num: int):
+        """Return the frame umber as a formatted string."""
         return f'{frame_num:0{self._n_digits_in_frame_num()}}'
     
     def add_at_frame(self, frame_num: int, values: np.ndarray):
+        """Add annotations at a frame, given the annotation values."""
         assert isinstance(frame_num, int)
         values = np.array(values)
         assert values.shape == (self.n_annotations, 2)
@@ -1674,6 +1697,7 @@ class VideoAnnotation:
             self.data[label][frame_num] = list(value)
     
     def get_at_frame(self, frame_num: int):
+        """Retrieve annotations at a given frame number. If an annotation is not present, nan values will be used."""
         ret = []
         for label in self.labels:
             if frame_num in self.data[label]:
@@ -1683,6 +1707,7 @@ class VideoAnnotation:
         return ret
     
     def __getitem__(self, key):
+        """Easy access to specific annotation, or data from a frame number."""
         if key in self.labels:
             return self.data[key]
         if key in self.frames:
