@@ -20,7 +20,6 @@ import functools
 from datetime import timedelta, datetime
 from pathlib import Path
 
-import ffmpeg
 import numpy as np
 import pandas as pd
 
@@ -1239,6 +1238,13 @@ class VideoBrowser(GenericBrowser):
 
     def extract_clip(self, start_frame=None, end_frame=None, fname_out=None, out_rate=None):
         #TODO: For musicrunning, grab the corresponding audio and add the audio track to the video clip?
+        try:
+            import ffmpeg
+            use_subprocess = False
+        except ModuleNotFoundError:
+            import subprocess
+            use_subprocess = True
+
         if start_frame is None:
             start_frame = self.memoryslots._idx['1']
         if end_frame is None:
@@ -1251,7 +1257,10 @@ class VideoBrowser(GenericBrowser):
             out_rate = self.fps
         if fname_out is None:
             fname_out = os.path.join(CLIP_FOLDER, os.path.splitext(self.name)[0] + '_s{:.3f}_e{:.3f}.mp4'.format(start_time, end_time))
-        ffmpeg.input(self.fname, ss=start_time).output(fname_out, vcodec='h264_nvenc', t=dur, r=out_rate).run()
+        if use_subprocess:
+            subprocess.getoutput(f'ffmpeg -ss {start_time} -i "{self.fname}" -r {out_rate} -t {dur} -vcodec h264_nvenc "{fname_out}"')
+        else:
+            ffmpeg.input(self.fname, ss=start_time).output(fname_out, vcodec='h264_nvenc', t=dur, r=out_rate).run()
         return fname_out
 
 
