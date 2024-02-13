@@ -287,6 +287,9 @@ class StateVariable:
     def cycle(self):
         self._current_state_idx = (self._current_state_idx+1)%self.n_states()
     
+    def cycle_back(self):
+        self._current_state_idx = (self._current_state_idx-1)%self.n_states()
+    
     def set_state(self, state):
         if isinstance(state, int):
             assert 0 <= state < self.n_states()
