@@ -23,7 +23,6 @@ from pathlib import Path
 import numpy as np
 import pandas as pd
 
-import seaborn as sns
 import matplotlib as mpl
 from matplotlib import pyplot as plt
 from matplotlib import axes as maxes
@@ -1409,7 +1408,7 @@ class VideoPointAnnotator(VideoBrowser):
         self._current_label_text = TextView([f'Current label: {self._current_label}'], self.figure, pos='bottom center')
 
         self.plot_handles = {}
-        self.palette = sns.color_palette('Set2', len(self.annotations))
+        self.palette = self.get_default_color_palette(len(self.annotations))
         for label, color in zip(self.annotations.labels, self.palette):
             self.plot_handles[f'label_{label}'], = self._ax.plot([], [], 'o', color=color)
             self.plot_handles[f'trace_{label}'], = self._ax.plot([], [], color=color)
@@ -1427,6 +1426,21 @@ class VideoPointAnnotator(VideoBrowser):
 
         plt.show(block=False)
         self.update()
+    
+    @staticmethod
+    def get_default_color_palette(n_colors=10):
+        return [ # seaborn set 2
+            (0.40, 0.76, 0.65),
+            (0.99, 0.55, 0.38),
+            (0.55, 0.63, 0.79),
+            (0.91, 0.54, 0.76),
+            (0.65, 0.85, 0.33),
+            (1.00, 0.85, 0.18),
+            (0.90, 0.77, 0.58),
+            (0.70, 0.70, 0.70),
+            (0.40, 0.76, 0.65),
+            (0.99, 0.55, 0.38)
+            ][:n_colors]
     
     def _parse_labels_pos(self, labels_pos):
         if labels_pos is None:
