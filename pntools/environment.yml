@@ -2,8 +2,6 @@ name: pntools
 channels:
   - defaults
   - conda-forge
-  - pytorch
-  - nvidia
 dependencies:
   - blinker
   - ffmpeg-python
