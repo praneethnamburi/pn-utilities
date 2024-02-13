@@ -878,12 +878,12 @@ class GenericBrowser:
         if hasattr(self, 'data'): # otherwise returns None
             return len(self.data)
 
-    def reset_axes(self, event=None): # event in case it is used as a callback function
+    def reset_axes(self, axis='both', event=None): # event in case it is used as a callback function
         """Reframe data within matplotlib axes."""
         for ax in self.figure.axes:
             if isinstance(ax, maxes.SubplotBase):
                 ax.relim()
-                ax.autoscale()
+                ax.autoscale(axis=axis)
         plt.draw()
 
     ## select plots
