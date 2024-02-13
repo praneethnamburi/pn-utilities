@@ -1,0 +1,17 @@
+name: pntools
+channels:
+  - defaults
+  - conda-forge
+  - pytorch
+  - nvidia
+dependencies:
+  - blinker
+  - ffmpeg-python
+  - matplotlib
+  - multiprocess
+  - numpy
+  - opencv
+  - pandas
+  - scipy
+  - pip:
+      - decord
