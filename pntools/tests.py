@@ -4,8 +4,8 @@ Run tests on pntools
 
 import os
 import sys
-import numpy as np
 
+import numpy as np
 from blinker import signal
 
 DEV_ROOT = os.path.realpath(os.path.join(os.path.dirname(os.path.realpath(__file__)), '..'))
@@ -13,6 +13,7 @@ if DEV_ROOT not in sys.path:
     sys.path.append(DEV_ROOT)
 
 import pntools as pn
+
 
 def test_broadcasting():
     """Expected output: I 2 received 6"""

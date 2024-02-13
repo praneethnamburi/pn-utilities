@@ -12,29 +12,27 @@ Classes:
         Extend VideoBrowser to play, pause and extract clips using hotkeys. Show timeline in VideoBrowser.
         Add clickable navigation.
 """
+import functools
+import inspect
 import io
 import json
 import os
-import inspect
-import functools
-from datetime import timedelta, datetime
+from datetime import datetime, timedelta
 from pathlib import Path
 
+import matplotlib as mpl
 import numpy as np
 import pandas as pd
-
-import matplotlib as mpl
-from matplotlib import pyplot as plt
 from matplotlib import axes as maxes
 from matplotlib import lines as mlines
+from matplotlib import pyplot as plt
+from matplotlib.gridspec import GridSpec
+from matplotlib.path import Path as mPath
 from matplotlib.widgets import Button as ButtonWidget
 from matplotlib.widgets import LassoSelector as LassoSelectorWidget
-from matplotlib.path import Path as mPath
-from matplotlib.gridspec import GridSpec
 
 import pntools as pn
 from pntools import sampled, video
-
 
 CLIP_FOLDER = 'C:\\data\\_clipcollection'
 
@@ -1355,8 +1353,8 @@ class VideoPlotBrowser(GenericBrowser):
     
     def extract_clip(self, start_frame=None, end_frame=None, sav_dir=None, out_rate=30):
         """Save a video of screengrabs"""
-        import subprocess
         import shutil
+        import subprocess
         if start_frame is None:
             start_frame = self.memoryslots._idx['1']
         if end_frame is None:

@@ -6,14 +6,13 @@ Use the gui module for browsing videos.
 import os
 import re
 import subprocess
-import urllib
 import time
+import urllib
 from pathlib import Path
 
+import cv2 as cv
 import ffmpeg
 from decord import VideoReader, cpu, gpu
-import cv2 as cv
-from pytube import YouTube
 
 CLIP_FOLDER = 'C:\\data\\_clipcollection'
 
@@ -197,47 +196,52 @@ class Video(VideoReader):
     def gray(self, frame_num: int):
         return cv.cvtColor(self[frame_num].asnumpy(), cv.COLOR_BGR2GRAY)
 
-def download(url, start_time=None, end_time=None, dur=None, full_file=False):
-    """
-    Download a clip from a YouTube video.
-    Downloads to the path specified in the module variable CLIP_FOLDER
-    Returns the name of the downloaded video.
-    """
-    # url = 'https://www.youtube.com/watch?v=5umbf4ps0GQ'
-    
-    # download video
-    for _ in range(3):
-        try:
-            yvid = YouTube(url)
-            vid_found = True
-            break
-        except urllib.error.HTTPError:
-            time.sleep(0.5)
-            vid_found = False
-    
-    assert vid_found is True
+try:
+    def download(url, start_time=None, end_time=None, dur=None, full_file=False):
+        """
+        Download a clip from a YouTube video.
+        Downloads to the path specified in the module variable CLIP_FOLDER
+        Returns the name of the downloaded video.
+        """
+        from pytube import YouTube
 
-    ys = yvid.streams.get_highest_resolution()
-    fname_in = ys.download(CLIP_FOLDER, url.split('?v=')[-1])
-    if full_file: # otherwise clip the video
-        return fname_in
+        # url = 'https://www.youtube.com/watch?v=5umbf4ps0GQ'
 
-    # specify interval
-    if start_time is None: # manually find the start and stop times
-        this_vid = View(fname_in)
-        start_time = float(input('Specify start frame: '))/this_vid.fps
-        end_time = float(input('Specify end frame: ')+1)/this_vid.fps
-        dur = end_time - start_time
-    else:
-        assert isinstance(start_time, (float, int))
-        assert not (end_time is None and dur is None)
-        if dur is None:
-            end_time = start_time + dur
-        else:
+        # download video
+        for _ in range(3):
+            try:
+                yvid = YouTube(url)
+                vid_found = True
+                break
+            except urllib.error.HTTPError:
+                time.sleep(0.5)
+                vid_found = False
+        
+        assert vid_found is True
+
+        ys = yvid.streams.get_highest_resolution()
+        fname_in = ys.download(CLIP_FOLDER, url.split('?v=')[-1])
+        if full_file: # otherwise clip the video
+            return fname_in
+
+        # specify interval
+        if start_time is None: # manually find the start and stop times
+            this_vid = View(fname_in)
+            start_time = float(input('Specify start frame: '))/this_vid.fps
+            end_time = float(input('Specify end frame: ')+1)/this_vid.fps
             dur = end_time - start_time
+        else:
+            assert isinstance(start_time, (float, int))
+            assert not (end_time is None and dur is None)
+            if dur is None:
+                end_time = start_time + dur
+            else:
+                dur = end_time - start_time
 
-    # clip video
-    fname_out = os.path.join(CLIP_FOLDER, os.path.splitext(fname_in)[0] + '_s{:.3f}_e{:.3f}.mp4'.format(start_time, end_time))
-    ffmpeg.input(fname_in, ss=start_time).output(fname_out, vcodec='h264_nvenc', t=dur).run()
-    
-    return fname_out
+        # clip video
+        fname_out = os.path.join(CLIP_FOLDER, os.path.splitext(fname_in)[0] + '_s{:.3f}_e{:.3f}.mp4'.format(start_time, end_time))
+        ffmpeg.input(fname_in, ss=start_time).output(fname_out, vcodec='h264_nvenc', t=dur).run()
+        
+        return fname_out
+except ModuleNotFoundError:
+    print('Install pytube to attemp video downloading from youtube.')

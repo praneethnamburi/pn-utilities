@@ -3,11 +3,14 @@ Tools for working with sampled data
 """
 
 import collections
+
 import numpy as np
-from scipy.signal import hilbert, firwin, filtfilt, butter, resample, iirnotch, welch
 from scipy.fft import fft, fftfreq
-from scipy.interpolate import interp1d
 from scipy.integrate import simpson
+from scipy.interpolate import interp1d
+from scipy.signal import (butter, filtfilt, firwin, hilbert, iirnotch,
+                          resample, welch)
+
 
 class Time:
     """

@@ -3,17 +3,17 @@ Praneeth's tools for making life easy while coding in python.
 """
 
 import errno
+import fnmatch
 import functools
 import importlib
 import inspect
 import os
 import re
-import sys
-import subprocess
-import weakref
 import socket
-import fnmatch
+import subprocess
+import sys
 import time
+import weakref
 from copy import deepcopy
 from pathlib import Path
 from timeit import default_timer as timer
@@ -22,8 +22,9 @@ import pandas as pd
 
 if os.name == 'nt':
     import multiprocess
-import numpy as np
+
 import blinker
+import numpy as np
 
 try:
     BLENDER_MODE = True
@@ -32,6 +33,7 @@ except ImportError:
     BLENDER_MODE = False
 
 from pyfilemanager import FileManager, find, get_file_sizes
+
 
 ## Inheritance
 class AddMethods:
@@ -1437,6 +1439,7 @@ except (ModuleNotFoundError, ImportError):
 
 try:
     import portion as P
+
     # extend portion functionality in the class below
     class PNInterval(P.Interval):
         @property
@@ -1496,9 +1499,9 @@ Society for Industrial and Applied Mathematics, 2014.
 """
 
 import numpy as np
-from scipy.spatial.distance import euclidean, cdist
-from scipy.sparse.csgraph import minimum_spanning_tree
 from scipy.sparse import csgraph
+from scipy.sparse.csgraph import minimum_spanning_tree
+from scipy.spatial.distance import cdist, euclidean
 
 
 def DBCV(X, labels, dist_function=euclidean):

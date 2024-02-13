@@ -1,6 +1,7 @@
 # COPIED FROM HERE: https://github.com/talcs/simpledtw/blob/master/simpledtw.py
 import numpy as np
 
+
 def dtw(series_1, series_2, norm_func = np.linalg.norm):
 	matrix = np.zeros((len(series_1) + 1, len(series_2) + 1))
 	matrix[0,:] = np.inf
