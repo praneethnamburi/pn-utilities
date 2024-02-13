@@ -1524,11 +1524,12 @@ class VideoAnnotation:
         fname (str, optional): File name of the annotations (.json) file. If it
             doesn't exist, it will be created when save method is used. If this is a
             video file, fname will default to <video_name>_annotations.json.
+            This can also be a deeplabcut .h5 file (either labeled data OR predicted trace)
             Defaults to None.
+
         vname (str, optional): Name of the video being annotated. Defaults to None.
     
     Methods:
-        from_dlc : Load data from a deeplabcut .h5 file
         to_dlc: Convert from json file format into a deeplabcut dataframe format, and optionally save the file.
     
     """
@@ -1554,7 +1555,7 @@ class VideoAnnotation:
         elif fname_inp is not None and vname_inp is None:
             if video.is_video(fname_inp):
                 vname = fname_inp
-                fname = os.path.join(Path(vname_inp).parent, Path(vname_inp).stem + '_annotations.json')
+                fname = os.path.join(Path(fname_inp).parent, Path(fname_inp).stem + '_annotations.json')
             else:
                 fname, vname = fname_inp, vname_inp # do nothing, just for code readability
         elif fname_inp is None and vname_inp is not None:
@@ -1565,28 +1566,41 @@ class VideoAnnotation:
             assert video.is_video(vname_inp)
             fname, vname = fname_inp, vname_inp # do nothing
         return fname, vname
+    
+    def load(self, n_annotations=10, **h5_kwargs):
+        """Load annotations from a json file, dlc h5 file, or initialize an annotation dictionary if a file doesn't exist."""
+        if (self.fname is None) or (not os.path.exists(self.fname)):
+            return {str(label):{} for label in range(n_annotations)}
+            
+        if Path(self.fname).suffix == '.json':
+            return self._load_json(self.fname)
 
-    @classmethod
-    def from_dlc(cls, dlc_fname, vname=None, remove_label_prefix='point', img_prefix='img', img_suffix='.png'):
-        """Load annotations from a deeplabcut h5 file."""
-        if isinstance(dlc_fname, pd.DataFrame):
-            df = dlc_fname
-            fname = None
-        else:
+        assert Path(self.fname).suffix == '.h5'
+        return self._load_dlc(self.fname, **h5_kwargs)
+    
+    @staticmethod
+    def _load_json(json_fname):
+        with open(json_fname, 'r') as f:
+            ret = {}
+            for k,v in json.load(f).items():
+                if v:
+                    ret[k] = {int(frame_num):loc for frame_num, loc in v.items()}
+            return ret
+    def _load_dlc(self, dlc_fname, **kwargs):
+        if isinstance(dlc_fname, (str, Path)):
             assert os.path.exists(dlc_fname)
             assert Path(dlc_fname).suffix == '.h5'
             df = pd.read_hdf(dlc_fname)
-            fname = Path(dlc_fname).with_suffix('.json')
-            if os.path.exists(fname):
-                fname = None
-        
-        obj = cls(fname, vname)
-        
-        obj.data = obj._dlc_df_to_annotation_dict(df, remove_label_prefix, img_prefix, img_suffix)
-        return obj
-    
+        else:
+            assert isinstance(dlc_fname, pd.DataFrame)
+            df = dlc_fname
+        if isinstance(df.index, pd.MultiIndex): # labeled data format
+            return self._dlc_df_to_annotation_dict(df, **kwargs)
+        return self._dlc_trace_to_annotation_dict(df, **kwargs) # predicted points trace
+
     @staticmethod
     def _dlc_df_to_annotation_dict(df, remove_label_prefix='point', img_prefix='img', img_suffix='.png'):
+        """Convert dlc labeled data dataframe to an annotation dictionary"""
         labels = [x.removeprefix(remove_label_prefix) for x in df.columns.levels[1]]
         frames_str = [x.removeprefix(img_prefix).removesuffix(img_suffix) for x in df.index.levels[-1]]
 
@@ -1604,6 +1618,26 @@ class VideoAnnotation:
                     continue
                 data[label][int(frame_str)] = coord_val
         
+        return data
+    
+    @staticmethod
+    def _dlc_trace_to_annotation_dict(df, remove_label_prefix='point'):
+        """Convery dlc labeled trace dataframe (result of analyze_videos) to an annotation dictionary."""
+        labels = [x.removeprefix(remove_label_prefix) for x in df.columns.levels[1]]
+        frames = df.index.values
+
+        data = {label: {} for label in labels}
+        scorer = df.columns.levels[0].values[0]
+        for label in labels:
+            for frame in frames:
+                coord_val = [
+                    df.loc[frame][scorer, f'{remove_label_prefix}{label}', coord_name]
+                    for coord_name in ('x', 'y')
+                    ]
+                if np.all(np.isnan(coord_val)):
+                    continue
+                data[label][frame] = coord_val
+
         return data
     
     def __len__(self):
@@ -1645,17 +1679,6 @@ class VideoAnnotation:
         """Return a list of frames that are annotated with the current label."""
         assert label in self.labels
         return list(self.data[label].keys())
-    
-    def load(self, n_annotations=10):
-        """Load annotations from a json file, or initialize an annotation dictionary if a file doesn't exist."""
-        if self.fname is not None and os.path.exists(self.fname):
-            with open(self.fname, 'r') as f:
-                ret = {}
-                for k,v in json.load(f).items():
-                    if v:
-                        ret[k] = {int(frame_num):loc for frame_num, loc in v.items()}
-                return ret
-        return {str(label):{} for label in range(n_annotations)}
         
     def save(self, fname=None):
         """Save the annotations json file. self.fname should be a valid file path."""
