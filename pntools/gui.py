@@ -1550,7 +1550,7 @@ class VideoAnnotation:
     
     """
     def __init__(self, fname: str=None, vname: str=None):       
-        if vname is None and video.is_video(fname):
+        if (vname is None and video.is_video(fname)) or (vname is not None and video.is_video(vname)):
             vname = fname
             fname = os.path.join(Path(vname).parent, Path(vname).stem + '_annotations.json')
 
@@ -1717,7 +1717,6 @@ class VideoAnnotation:
     def to_dlc(self, scorer='praneeth', output_path=None, file_prefix=None, img_prefix='img', img_suffix='.png', label_prefix='point', save=True):
         """Save annotations in deeplabcut format."""
         annotations = self.data
-        video_stem = self.video.name
         
         if output_path is None:
             output_path = Path(self.fname).parent
@@ -1726,13 +1725,13 @@ class VideoAnnotation:
         index_length = self._n_digits_in_frame_num()
         img_stems = [f'{img_prefix}{x:0{index_length}}{img_suffix}' for x in self.frames]
         
-        row_idx = pd.MultiIndex.from_tuples([('labeled-data', video_stem, img_stem) for img_stem in img_stems])
-        col_idx = pd.MultiIndex.from_product([[scorer], [f'point{x}' for x in annotations], ['x', 'y']], names = ['scorer', 'bodyparts', 'coords'])
+        row_idx = pd.MultiIndex.from_tuples([('labeled-data', self.video.name, img_stem) for img_stem in img_stems])
+        col_idx = pd.MultiIndex.from_product([[scorer], [f'{label_prefix}{x}' for x in annotations], ['x', 'y']], names = ['scorer', 'bodyparts', 'coords'])
         df = pd.DataFrame([], index=row_idx, columns=col_idx)
         for annotation_label, annotation_dict in annotations.items():
             for frame, xy in annotation_dict.items():
                 for coord_name, coord_val in zip(('x', 'y'), xy):
-                    df.loc['labeled-data', video_stem, f'{img_prefix}{frame:0{index_length}}{img_suffix}'][scorer, f'{label_prefix}{annotation_label}', coord_name] = coord_val
+                    df.loc['labeled-data', self.video.name, f'{img_prefix}{frame:0{index_length}}{img_suffix}'][scorer, f'{label_prefix}{annotation_label}', coord_name] = coord_val
         df = df.apply(lambda col:pd.to_numeric(col, errors='coerce'))
 
         if file_prefix is None:
