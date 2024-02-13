@@ -1386,27 +1386,24 @@ class VideoPointAnnotator(VideoBrowser):
     If you're doing one label at a time, then pick the frames for the first label arbitrarily.
     For the second label onwards, 
     """
-    def __init__(self, vid_name, labels_pos: dict=None, titlefunc=None):
+    def __init__(self, vid_name, titlefunc=None):
         figure_handle, _ax = plt.subplots(1, 1) # height_ratiors=[4,1,1]
         super().__init__(vid_name, titlefunc, _ax)
         self.memoryslots.hide()
         self.memoryslots.disable()
 
         self.fname_annotations = os.path.join(Path(self.fname).parent, Path(self.fname).stem + '_annotations.json')
-        self.annotations = self.load_annotations()
-        self.add_key_binding('s', on_press_function=self.save_annotations)
+        self.annotations = VideoAnnotation(fname=self.fname_annotations, vname=self.fname)
+        self.add_key_binding('s', on_press_function=self.annotations.save)
 
         self._current_label = '0'
         self._current_label_text = TextView([f'Current label: {self._current_label}'], self.figure, pos='bottom center')
 
         self.plot_handles = {}
-        self.palette = sns.color_palette('Set2', max([int(x) for x in self.annotations.keys()])+1)
-        for label, color in zip(self.annotations, self.palette):
+        self.palette = sns.color_palette('Set2', len(self.annotations))
+        for label, color in zip(self.annotations.labels, self.palette):
             self.plot_handles[f'label_{label}'], = self._ax.plot([], [], 'o', color=color)
             self.plot_handles[f'trace_{label}'], = self._ax.plot([], [], color=color)
-
-        self.labels_pos = self._parse_labels_pos(labels_pos)
-        self.pick_event = None
 
         self.add_key_binding('/', self.add_annotation)
         self.add_key_binding('t', self.add_annotation)
@@ -1419,10 +1416,6 @@ class VideoPointAnnotator(VideoBrowser):
         self.add_key_binding('g', self.increment)
         self.add_key_binding('d', self.decrement_if_unannotated)
 
-        # self.cid.append(self.figure.canvas.mpl_connect('pick_event', self.onpick))
-        # self.cid.append(self.figure.canvas.mpl_connect('button_press_event', self.place_selected_label))
-        # self.cid.append(self.figure.canvas.mpl_connect('button_press_event', self.go_to_frame))
-
         plt.show(block=False)
         self.update()
     
@@ -1431,32 +1424,16 @@ class VideoPointAnnotator(VideoBrowser):
             labels_pos = {}
         
         ret = {}
-        for this_label in self.annotations:
+        for this_label in self.annotations.labels:
             if this_label in labels_pos:
                 ret[this_label] = labels_pos[this_label]
             else:
                 ret[this_label] = np.array([[np.nan, np.nan]])
         return ret
-
-    def onpick(self, event):
-        print('Onpick Activated')
-        print(event.__dict__)
-        if event.mouseevent.button.name == 'LEFT' and len(event.ind == 1):
-            self.pick_event = event
-            label_names = list(self.annotations.keys())
-            print(f'Picked {label_names[event.ind[0]]} with index {event.ind[0]} at frame {self._current_idx}')
-            self.update()
-            self.reset_axes()
-    
-    def get_annotated_frames(self, label=None):
-        """Return a list of frames that are annotated with the current label."""
-        if label is None:
-            label = self._current_label
-        return [int(x) for x in self.annotations[label].keys()]
     
     def __call__(self, event):
         super().__call__(event)
-        if event.name == 'key_press_event' and event.key in self.annotations:
+        if event.name == 'key_press_event' and event.key in self.annotations.labels:
             self._current_label = event.key
             self.update_current_label_text(draw=True)
     
@@ -1467,9 +1444,9 @@ class VideoPointAnnotator(VideoBrowser):
         self.reset_axes()
     
     def update_annotation_display(self, draw=False):
-        for label, annot_dict in self.annotations.items():
+        for label, annot_dict in self.annotations.data.items():
             this_data = ([], [])
-            frame_number = str(self._current_idx)
+            frame_number = self._current_idx
             if frame_number in annot_dict: 
                 this_data = annot_dict[frame_number]
             self.plot_handles[f'label_{label}'].set_data(*this_data)
@@ -1483,28 +1460,18 @@ class VideoPointAnnotator(VideoBrowser):
 
     def add_annotation(self, event):
         # Add annotation at frame. If it exists, it'll get overwritten.
-        self.annotations[self._current_label][str(self._current_idx)] = float(event.xdata), float(event.ydata)
+        self.annotations.data[self._current_label][self._current_idx] = [float(event.xdata), float(event.ydata)]
         self.update()
     
     def remove_annotation(self, event=None):
         # remove annotation at the current frame if it exists
-        self.annotations[self._current_label].pop(str(self._current_idx), None)
+        self.annotations.data[self._current_label].pop(self._current_idx, None)
         self.update()
-
-    def load_annotations(self, event=None):
-        if os.path.exists(self.fname_annotations):
-            with open(self.fname_annotations, 'r') as f:
-                return json.load(f)
-        return {str(label):{} for label in range(10)}
-        
-    def save_annotations(self, event=None):
-        with open(self.fname_annotations, 'w') as f:
-            json.dump(self.annotations, f, indent=4)
     
     def next_annotation(self, event=None):
         try:
             current_frame = self._current_idx
-            self._current_idx = min([x for x in self.get_annotated_frames() if x > current_frame])
+            self._current_idx = min([x for x in self.annotations.get_frames(self._current_label) if x > current_frame])
             self.update()
         except ValueError:
             return
@@ -1512,25 +1479,17 @@ class VideoPointAnnotator(VideoBrowser):
     def previous_annotation(self, event=None):
         try:
             current_frame = self._current_idx
-            self._current_idx = max([x for x in self.get_annotated_frames() if x < current_frame])
+            self._current_idx = max([x for x in self.annotations.get_frames(self._current_label) if x < current_frame])
             self.update()
         except ValueError:
             return
-    
-    @property
-    def label_names(self):
-        return list(self.annotations.keys())
-    
-    @property
-    def all_annotated_frames(self):
-        return set([frame for label_name in self.label_names for frame in self.get_annotated_frames(label_name)])
-    
+
     def increment_if_unannotated(self, event=None):
-        if self._current_idx not in self.all_annotated_frames:
+        if self._current_idx not in self.annotations.frames:
             self.increment()
     
     def decrement_if_unannotated(self, event=None):
-        if self._current_idx not in self.all_annotated_frames:
+        if self._current_idx not in self.annotations.frames:
             self.decrement()
 
 
@@ -1549,13 +1508,10 @@ class VideoAnnotation:
         to_dlc: Convert from json file format into a deeplabcut dataframe format, and optionally save the file.
     
     """
-    def __init__(self, fname: str=None, vname: str=None):       
-        if (vname is None and video.is_video(fname)) or (vname is not None and video.is_video(vname)):
-            vname = fname
-            fname = os.path.join(Path(vname).parent, Path(vname).stem + '_annotations.json')
+    def __init__(self, fname: str=None, vname: str=None):
+        self.fname, vname = self._parse_inp(fname, vname)
 
-        self.fname = fname
-        if fname is not None:
+        if self.fname is not None:
             self.name = Path(fname).stem
         else:
             self.name = None
@@ -1566,6 +1522,25 @@ class VideoAnnotation:
             self.video = None
         
         self.data = self.load()
+
+    @staticmethod
+    def _parse_inp(fname_inp, vname_inp):
+        if fname_inp is None and vname_inp is None:
+            fname, vname = fname_inp, vname_inp # do nothing, empty annotation
+        elif fname_inp is not None and vname_inp is None:
+            if video.is_video(fname_inp):
+                vname = fname_inp
+                fname = os.path.join(Path(vname_inp).parent, Path(vname_inp).stem + '_annotations.json')
+            else:
+                fname, vname = fname_inp, vname_inp # do nothing, just for code readability
+        elif fname_inp is None and vname_inp is not None:
+            assert video.is_video(vname_inp)
+            vname = vname_inp
+            fname = os.path.join(Path(vname_inp).parent, Path(vname_inp).stem + '_annotations.json')
+        elif fname_inp is not None and vname_inp is not None:
+            assert video.is_video(vname_inp)
+            fname, vname = fname_inp, vname_inp # do nothing
+        return fname, vname
 
     @classmethod
     def from_dlc(cls, dlc_fname, vname=None, remove_label_prefix='point', img_prefix='img', img_suffix='.png'):
