@@ -12,6 +12,8 @@ Classes:
         Extend VideoBrowser to play, pause and extract clips using hotkeys. Show timeline in VideoBrowser.
         Add clickable navigation.
 """
+from __future__ import annotations
+
 import functools
 import inspect
 import io
@@ -19,7 +21,10 @@ import json
 import os
 from datetime import datetime, timedelta
 from pathlib import Path
+from typing import Union
 
+import cv2 as cv
+from decord import VideoReader, cpu
 import matplotlib as mpl
 import numpy as np
 import pandas as pd
@@ -1425,6 +1430,18 @@ class VideoPointAnnotator(VideoBrowser):
         self.add_key_binding('g', self.increment)
         self.add_key_binding('d', self.decrement_if_unannotated)
 
+        self.add_key_binding(
+            'v', 
+            (lambda s: s.predict_points_with_lucas_kanade(labels='current')).__get__(self), 
+            'Predict current point with lucas-kanade'
+            )
+        
+        self.add_key_binding(
+            'b', 
+            (lambda s: s.predict_points_with_lucas_kanade(labels='all')).__get__(self), 
+            'Predict all points with lucas-kanade'
+            )
+
         plt.show(block=False)
         self.update()
     
@@ -1482,9 +1499,17 @@ class VideoPointAnnotator(VideoBrowser):
         if draw:
             plt.draw()
 
+    def _add_annotation(self, location, frame_number=None, label=None):
+        assert len(location) == 2
+        if frame_number is None:
+            frame_number = self._current_idx
+        if label is None:
+            label = self._current_label
+        self.annotations.data[label][frame_number] = list(location)
+
     def add_annotation(self, event):
         # Add annotation at frame. If it exists, it'll get overwritten.
-        self.annotations.data[self._current_label][self._current_idx] = [float(event.xdata), float(event.ydata)]
+        self._add_annotation([float(event.xdata), float(event.ydata)])
         self.update()
     
     def remove_annotation(self, event=None):
@@ -1492,22 +1517,26 @@ class VideoPointAnnotator(VideoBrowser):
         self.annotations.data[self._current_label].pop(self._current_idx, None)
         self.update()
     
-    def next_annotation(self, event=None):
-        try:
-            current_frame = self._current_idx
-            self._current_idx = min([x for x in self.annotations.get_frames(self._current_label) if x > current_frame])
-            self.update()
-        except ValueError:
-            return
+    def _get_previous_annotated_frame(self):
+        return max([x for x in self.annotations.get_frames(self._current_label) if x < self._current_idx])
+    
+    def _get_next_annotated_frame(self):
+        return min([x for x in self.annotations.get_frames(self._current_label) if x > self._current_idx])
     
     def previous_annotation(self, event=None):
         try:
-            current_frame = self._current_idx
-            self._current_idx = max([x for x in self.annotations.get_frames(self._current_label) if x < current_frame])
+            self._current_idx = self._get_previous_annotated_frame()
             self.update()
         except ValueError:
             return
 
+    def next_annotation(self, event=None):
+        try:
+            self._current_idx = self._get_next_annotated_frame()
+            self.update()
+        except ValueError:
+            return
+        
     def increment_if_unannotated(self, event=None):
         if self._current_idx not in self.annotations.frames:
             self.increment()
@@ -1515,6 +1544,34 @@ class VideoPointAnnotator(VideoBrowser):
     def decrement_if_unannotated(self, event=None):
         if self._current_idx not in self.annotations.frames:
             self.decrement()
+
+    def predict_points_with_lucas_kanade(self, labels='all'):
+        if labels == 'all':
+            labels = self.annotations.labels
+        elif labels == 'current':
+            labels = [self._current_label]
+        elif isinstance(labels, str): # specify one label
+            assert labels in self.annotations.labels
+            labels = [labels]
+        else: # specify a list of labels
+            assert all([label in self.annotations.labels for label in labels])
+
+        video = self.data
+        start_frame = self._get_previous_annotated_frame()
+        end_frame = self._current_idx
+        if end_frame <= start_frame:
+            return
+        init_loc = [self.annotations.data[label][start_frame] for label in labels]
+        tracked_loc = lucas_kanade(video, start_frame, end_frame, init_loc, mode='full')
+        end_loc_all = tracked_loc[-1]
+        for label, end_loc in zip(labels, end_loc_all):
+            if end_frame in self.annotations.get_frames(label):
+                print(f"Updating location for {label} at {end_frame}.")
+                print(f"To revert, use v._add_annotation({self.annotations.data[label][end_frame]}, frame_number={end_frame}, label='{label}'); v.update()")
+            self._add_annotation(end_loc, label=label)
+        self.update()
+        return tracked_loc
+
 
 
 class VideoAnnotation:
@@ -1542,7 +1599,7 @@ class VideoAnnotation:
             self.name = None
 
         if video.is_video(vname):
-            self.video = video.Video(vname)
+            self.video = Video(vname)
         else:
             self.video = None
         
@@ -1769,6 +1826,74 @@ class VideoAnnotation:
             df.to_hdf(labeled_data_file_prefix + '.h5', key="df_with_missing", mode="w")
         return df
 
+def lucas_kanade(
+        video: Union[Video, VideoReader, str, Path], 
+        start_frame: int, 
+        end_frame: int, 
+        init_points: np.ndarray, 
+        mode: str='full', 
+        **lk_config
+        ) -> np.ndarray:
+    """Track points in video using lucas kanade
+
+    Args:
+        video (decord.VideoReader): video object.
+        start_frame (int): Initial frame for tracking.
+        end_frame (int): Final frame (inclusive).
+        init_points (np.ndarray): n_points x 2
+        mode (str, optional): 'full' tracks the points at every frame in the entire segment. 
+            'direct' tracks the point at the last frame using the first frame. 
+            Defaults to 'full'.
+
+    Returns:
+        np.ndarray: n_frames x n_points x 2, includes start and end frame for 'full', and 1 x n_points x 2 for 'direct'.
+    """    
+    def gray(self, frame_num: int):
+        return cv.cvtColor(self[frame_num].asnumpy(), cv.COLOR_BGR2GRAY)
+    
+    if isinstance(video, (str, Path)):
+        assert os.path.exists(video)
+        video = VideoReader(video)
+
+    init_points = np.array(init_points).astype(np.float32)
+
+    assert mode in ('direct', 'full')
+
+    lk_config_default = dict(
+            winSize=(60, 60), 
+            maxLevel=2, 
+            criteria=(cv.TERM_CRITERIA_EPS | cv.TERM_CRITERIA_COUNT, 10, 0.03)
+        )
+    lk_config = {**lk_config_default, **lk_config}
+
+    if init_points.ndim == 1:
+        init_points = init_points[np.newaxis, :]
+
+    n_points = init_points.shape[0]
+    assert init_points.shape[-1] == 2
+    if init_points.ndim == 2:
+        init_points = init_points.reshape((n_points, 1, 2))
+
+    if mode == 'full':
+        n_frames = end_frame - start_frame + 1
+        tracked_points = np.nan*np.zeros((n_frames, n_points, 2))
+        frame_count = 0
+        tracked_points[frame_count] = init_points[:, 0, :]
+        fi = gray(video, start_frame)
+        for frame_num in range(start_frame+1, end_frame+1):
+            frame_count = frame_count + 1
+            ff = gray(video, frame_num)
+            fp, _, _ = cv.calcOpticalFlowPyrLK(fi, ff, init_points, None, **lk_config)
+            tracked_points[frame_count] = fp[:, 0, :]
+            fi = ff
+            init_points = fp
+        return tracked_points
+
+    fi = gray(video, start_frame)
+    ff = gray(video, end_frame)
+    fp, _, _ = cv.calcOpticalFlowPyrLK(fi, ff, init_points, None, **lk_config)
+    tracked_points = fp[:, 0, :][np.newaxis, :, :]
+    return tracked_points
 
 class TextView:
     """Show text array line by line"""
@@ -1804,6 +1929,17 @@ class TextView:
         x, y, va, ha = self._pos
         self._text = self._ax.text(x, y, '\n'.join(self.text), va=va, ha=ha, family='monospace')
         plt.draw()
+
+class Video(VideoReader):
+    def __init__(self, uri, ctx=cpu(0), width=-1, height=-1, num_threads=0, fault_tol=-1):
+        assert os.path.exists(uri) and video.is_video(uri)
+        self.fname = uri
+        self.name = Path(uri).stem
+        super().__init__(uri, ctx, width, height, num_threads, fault_tol)
+
+    def gray(self, frame_num: int):
+        return cv.cvtColor(self[frame_num].asnumpy(), cv.COLOR_BGR2GRAY)
+
 
 class SignalBrowserKeyPress(SignalBrowser):
     """Wrapper around plot_sync with key press features to make manual alignment process easier"""
