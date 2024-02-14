@@ -10,6 +10,7 @@ dependencies:
   - numpy
   - opencv
   - pandas
+  - pip
   - scipy
   - pip:
       - decord
