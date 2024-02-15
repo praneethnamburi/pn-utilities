@@ -174,15 +174,27 @@ class AssetContainer:
 
     def __getitem__(self, key):
         """Return an asset by the name key or by position in the list."""
-        try:
-            self.names
-        except AttributeError:
+        if not self._has_names():
             assert isinstance(key, int)
             
         if isinstance(key, int) and key not in self.names:
             return self._list[key]
         
         return {x.name: x for x in self._list}[key]
+
+    def _has_names(self):
+        try:
+            self.names
+            return True
+        except AttributeError:
+            return False
+        
+    def add(self, asset):
+        if hasattr(asset, 'name'):
+            assert asset.name not in self.names
+        self._list.append(asset)
+        return asset
+
 
 class Buttons(AssetContainer):
     """Manager for buttons in a matplotlib figure or GUI (see GenericBrowser for example)"""
@@ -214,16 +226,13 @@ class Buttons(AssetContainer):
             else:
                 b.on_clicked(action_func)
         
-        self._list.append(b)
-        return b
+        return super().add(b)
 
 
 class Selectors(AssetContainer):
     """Manager for selector objects - for picking points on line2D objects"""
     def add(self, plot_handle):
-        ls = Selector(plot_handle)
-        self._list.append(ls)
-        return ls
+        return super().add(Selector(plot_handle))
         
 class MemorySlots(AssetContainer):
     def __init__(self, parent):
@@ -310,7 +319,7 @@ class StateVariables(AssetContainer):
     
     def add(self, name:str, states:list):
         assert name not in self.names
-        self._list.append(StateVariable(name, states))
+        return super().add(StateVariable(name, states))
     
     def _get_display_text(self):
         return ['State variables:'] + [f'{x.name} - {x.current_state}' for x in self._list]
@@ -725,7 +734,7 @@ class Events(AssetContainer):
             **plot_kwargs):
         assert name not in self.names
         this_ev = Event(name, size, fname, data_id_func, color, pick_action, ax_list, win_remove, win_add, **plot_kwargs)
-        self._list.append(this_ev)
+        super().add(this_ev)
         if add_key is not None:
             self.parent.add_key_binding(add_key, this_ev.add, f'Add {name}')
         if remove_key is not None:
@@ -736,6 +745,7 @@ class Events(AssetContainer):
             this_ev.setup_display()
         else:
             this_ev._hide = True # This is for fill displays
+        return this_ev
     
     def add_from_file(self, fname, data_id_func, ax_list=None, add_key=None, remove_key=None, save_key=None, show=True, **plot_kwargs):
         """Easier than using add for adding events that are created by another algorithm, and meant to be edited using the gui module."""
@@ -745,7 +755,7 @@ class Events(AssetContainer):
         del hdr['all_keys_are_tuples']
         plot_kwargs = hdr['plot_kwargs'] | plot_kwargs
         del hdr['plot_kwargs']
-        self.add(data_id_func=data_id_func, ax_list=ax_list, add_key=add_key, remove_key=remove_key, save_key=save_key, show=show, **(hdr | plot_kwargs))
+        return self.add(data_id_func=data_id_func, ax_list=ax_list, add_key=add_key, remove_key=remove_key, save_key=save_key, show=show, **(hdr | plot_kwargs))
     
     def setup_display(self):
         for ev in self._list:
@@ -1560,7 +1570,6 @@ class VideoPointAnnotator(VideoBrowser):
         return tracked_loc
 
 
-
 class VideoAnnotation:
     """Manage point annotations in video.
 
@@ -1590,6 +1599,9 @@ class VideoAnnotation:
                 name = 'video_annotation'
             else:
                 name = self.fstem
+        else:
+            assert isinstance(name, str)
+            self.name = name
 
         if video.is_video(vname):
             self.video = Video(vname)
@@ -1818,7 +1830,11 @@ class VideoAnnotation:
             df.to_csv(labeled_data_file_prefix + '.csv')
             df.to_hdf(labeled_data_file_prefix + '.h5', key="df_with_missing", mode="w")
         return df
-    
+
+class VideoAnnotations(AssetContainer):
+    def add(self, name, fname=None, vname=None):
+        ann = VideoAnnotation(fname, vname, name)
+        return super().add(ann)
 
 def lucas_kanade(
         video: Union[Video, VideoReader, str, Path], 
