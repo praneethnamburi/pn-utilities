@@ -1389,16 +1389,14 @@ class VideoPointAnnotator(VideoBrowser):
 
         self.fname_annotations = self._get_fname_annotations(annotation_name)
         self.annotations = VideoAnnotations(parent=self)
-        self.annotations.add(name=annotation_name, fname=self.fname_annotations, vname=self.fname)
+        ann = self.annotations.add(name=annotation_name, fname=self.fname_annotations, vname=self.fname)
+        ann.setup_display(self._ax, palette='Set2')
         self.add_key_binding('s', on_press_function=self.ann.save)
 
         self._current_label = '0'
         self._current_label_text = TextView([f'Current label: {self._current_label}'], self.figure, pos='bottom center')
 
         self.plot_handles = {}
-        self.palette = self.get_default_color_palette(len(self.ann))
-        for label, color in zip(self.ann.labels, self.palette):
-            self.plot_handles[f'label_{label}'], = self._ax.plot([], [], 'o', color=color)
 
         self.add_key_binding('/', self.add_annotation)
         self.add_key_binding('t', self.add_annotation)
@@ -1426,21 +1424,6 @@ class VideoPointAnnotator(VideoBrowser):
         plt.show(block=False)
         self.update()
     
-    @staticmethod
-    def get_default_color_palette(n_colors=10):
-        return [ # seaborn set 2
-            (0.40, 0.76, 0.65),
-            (0.99, 0.55, 0.38),
-            (0.55, 0.63, 0.79),
-            (0.91, 0.54, 0.76),
-            (0.65, 0.85, 0.33),
-            (1.00, 0.85, 0.18),
-            (0.90, 0.77, 0.58),
-            (0.70, 0.70, 0.70),
-            (0.40, 0.76, 0.65),
-            (0.99, 0.55, 0.38)
-            ][:n_colors]
-    
     @property
     def ann(self) -> VideoAnnotation:
         """Return current (right now, first and only)  annotation."""
@@ -1467,18 +1450,6 @@ class VideoPointAnnotator(VideoBrowser):
             else:
                 ret[this_label] = np.array([[np.nan, np.nan]])
         return ret
-    
-    def add_new_label(self, label: str, color=None):
-        assert label not in self.ann.labels
-        assert label in [str(x) for x in range(10)] # for now, might remove this limitation in the future
-        if color is None:
-            color = self.get_default_color_palette()[len(self.ann)]
-        assert isinstance(color, (list, tuple)) and len(color) == 3
-        
-        print(f'Creating new label {label}')
-        self.ann.data[label] = {}
-        self.palette = self.palette + [color]
-        self.plot_handles[f'label_{label}'], = self._ax.plot([], [], 'o', color=color)
 
     def __call__(self, event):
         super().__call__(event)
@@ -1487,25 +1458,15 @@ class VideoPointAnnotator(VideoBrowser):
                 self._current_label = str(event.key)
             elif event.key in [str(x) for x in range(10)]:
                 self._current_label = str(event.key)
-                self.add_new_label(self._current_label)
+                self.ann.add_label(self._current_label)
             self.update_current_label_text(draw=True)
     
     def update(self):
-        self.update_annotation_display(draw=False)
+        self.ann.update_display(self._current_idx, draw=False)
         self.update_current_label_text(draw=False)
         super().update()
         self.reset_axes()
-    
-    def update_annotation_display(self, draw=False):
-        for label, annot_dict in self.ann.data.items():
-            this_data = ([], [])
-            frame_number = self._current_idx
-            if frame_number in annot_dict: 
-                this_data = annot_dict[frame_number]
-            self.plot_handles[f'label_{label}'].set_data(*this_data)
-        if draw:
-            plt.draw()
-    
+
     def update_current_label_text(self, draw=False):
         self._current_label_text.update([f'Current label: {self._current_label}'])
         if draw:
@@ -1513,12 +1474,11 @@ class VideoPointAnnotator(VideoBrowser):
 
     def _add_annotation(self, location, frame_number=None, label=None):
         """Core function for adding annotations. Allows more control."""
-        assert len(location) == 2
         if frame_number is None:
             frame_number = self._current_idx
         if label is None:
             label = self._current_label
-        self.ann.data[label][frame_number] = list(location)
+        self.ann.add(location, label, frame_number)
 
     def add_annotation(self, event):
         """Add annotation at frame. If it exists, it'll get overwritten."""
@@ -1527,7 +1487,7 @@ class VideoPointAnnotator(VideoBrowser):
     
     def remove_annotation(self, event=None):
         """remove annotation at the current frame if it exists"""
-        self.ann.data[self._current_label].pop(self._current_idx, None)
+        self.ann.remove(self._current_label, self._current_idx)
         self.update()
     
     def _get_previous_annotated_frame(self):
@@ -1587,7 +1547,9 @@ class VideoPointAnnotator(VideoBrowser):
 
 
 class VideoAnnotation:
-    """Manage point annotations in video.
+    """Manage one point annotation layer in a video.
+    Each annotation layer can contain up to 10 labels, the string representations of digits 0-9.
+    Each label is a dictionary mapping a frame number to a 2D location on the video frame.
 
     Args:
         fname (str, optional): File name of the annotations (.json) file. If it
@@ -1597,12 +1559,19 @@ class VideoAnnotation:
             Defaults to None.
 
         vname (str, optional): Name of the video being annotated. Defaults to None.
+        
+        name (str, optional): Name of the annotation (something meaningful, for example <muscle_name>_<scorer> brachialis_praneeth)
+    
+        kwargs (dict, optional):
+            palette_name = 'Set2'. Color scheme to use. Defaults to 'Set2' from seaborn.
+            ax_list = []. If ax_list is specified, then the annotation display will be initialized at those axes.
+                Alternatively, use :py:meth:`VideoAnnotation.setup_display` to specify the axis list and colors.
     
     Methods:
         to_dlc: Convert from json file format into a deeplabcut dataframe format, and optionally save the file.
     
     """
-    def __init__(self, fname: str=None, vname: str=None, name: str=None):
+    def __init__(self, fname: str=None, vname: str=None, name: str=None, **kwargs):
         self.fname, vname = self._parse_inp(fname, vname)
 
         if self.fname is not None:
@@ -1625,6 +1594,12 @@ class VideoAnnotation:
             self.video = None
         
         self.data = self.load()
+
+        self.palette = get_palette(kwargs.pop('palette_name', 'Set2'), n_colors=10) # seaborn Set 2
+        ax_list = kwargs.pop('ax_list', [])
+        self.plot_handles = {'ax_list': ax_list}
+        if len(self.plot_handles['ax_list']) > 0:
+            self.setup_display()
 
     @staticmethod
     def _parse_inp(fname_inp, vname_inp):
@@ -1846,10 +1821,71 @@ class VideoAnnotation:
             df.to_csv(labeled_data_file_prefix + '.csv')
             df.to_hdf(labeled_data_file_prefix + '.h5', key="df_with_missing", mode="w")
         return df
+    
+    def add_label(self, label=None, color=None):
+        if label is None: # pick the next available label
+            assert len(self.labels) < 10
+            label = f'{len(self.labels)}'
+        assert label not in self.labels
+        assert label in [str(x) for x in range(10)] # for now, might remove this limitation in the future
+        
+        if color is None:
+            color = self.palette[int(label)]
+        else:
+            assert len(color == 3)
+            assert all([0 <= x <= 1 for x in color])
+            self.palette[len(self.labels)] = tuple(color)
+        
+        self.data[label] = {}
+        self.setup_display()
+        
+        print(f'Created new label {label}')
+        
+    def add(self, location, label, frame_number):
+        """Add a point annotation (location) of a given label at a frame number."""
+        assert len(location) == 2
+        self.data[label][frame_number] = list(location)
+
+    def remove(self, label, frame_number):
+        assert label in self.labels
+        self.data[label].pop(frame_number, None)
+
+    def setup_display(self, ax_list=None, palette=None):
+        if ax_list is None:
+            ax_list = self.plot_handles['ax_list']
+        if isinstance(ax_list, plt.Axes):
+            ax_list = [ax_list]
+        if len(ax_list) == 0:
+            return
+        assert all([isinstance(ax, plt.Axes) for ax in ax_list])
+
+        if palette is None:
+            palette = self.palette
+        else:
+            if isinstance(palette, str):
+                palette = get_palette(palette, 10)
+            self.palette = palette
+
+        self.plot_handles['ax_list'] = ax_list
+        for ax_cnt, ax in enumerate(ax_list):
+            for label, color in zip(self.labels, self.palette):
+                handle_name = f'label_{label}_in_ax{ax_cnt}'
+                if handle_name not in self.plot_handles:
+                    self.plot_handles[handle_name], = ax.plot([], [], 'o', color=color)
+
+    def update_display(self, frame_number, draw=False):
+        for ax_cnt in range(len(self.plot_handles['ax_list'])):
+            for label, annot_dict in self.data.items():
+                this_data = ([], [])
+                if frame_number in annot_dict:
+                    this_data = annot_dict[frame_number]
+                self.plot_handles[f'label_{label}_in_ax{ax_cnt}'].set_data(*this_data)
+        if draw:
+            plt.draw()
 
 class VideoAnnotations(AssetContainer):
-    def add(self, name, fname=None, vname=None):
-        ann = VideoAnnotation(fname, vname, name)
+    def add(self, name, fname=None, vname=None, **kwargs):
+        ann = VideoAnnotation(fname, vname, name, **kwargs)
         return super().add(ann)
 
 def lucas_kanade(
@@ -2367,3 +2403,24 @@ class SelectorFigureDemo:
 
     def stop(self, event=None):
         self.lasso.disconnect_events()
+
+
+def get_palette(palette_name='Set2', n_colors=10):
+    try:
+        import seaborn as sns
+        return sns.color_palette(palette_name, n_colors=n_colors)
+    except ModuleNotFoundError:
+        palettes = {
+            'Set2': [ # seaborn set 2
+                (0.40, 0.76, 0.65),
+                (0.99, 0.55, 0.38),
+                (0.55, 0.63, 0.79),
+                (0.91, 0.54, 0.76),
+                (0.65, 0.85, 0.33),
+                (1.00, 0.85, 0.18),
+                (0.90, 0.77, 0.58),
+                (0.70, 0.70, 0.70),
+                (0.40, 0.76, 0.65),
+                (0.99, 0.55, 0.38)
+            ]}
+        return palettes[palette_name][:n_colors]
