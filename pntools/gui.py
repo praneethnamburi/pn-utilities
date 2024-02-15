@@ -155,27 +155,37 @@ class Selector:
 
 
 ### Managers for extended widget classes defined here (used by Generic browser)
-class Buttons:
-    """Manager for buttons in a matplotlib figure or GUI (see GenericBrowser for example)"""
-    def __init__(self, parent):
-        self._button_list : list[Button] = []
-        self.parent = parent # matplotlib figure, or something that has a 'figure' attribute that is a figure
+class AssetContainer:
+    """Container for assets such as a button, memoryslot, etc
 
+    Args:
+        parent (Any): matplotlib figure, or something that has a 'figure' attribute that is a figure.
+    """        
+    def __init__(self, parent):
+        self._list: list = [] # list of assets
+        self.parent = parent
+    
     def __len__(self):
-        return len(self())
+        return len(self._list)
+    
+    @property
+    def names(self):
+        return [x.name for x in self._list]
 
     def __getitem__(self, key):
-        d = self.asdict()
-        if isinstance(key, int) and key not in d:
-            return self()[key]
-        return d[key]
-    
-    def __call__(self):
-        return self._button_list
+        """Return an asset by the name key or by position in the list."""
+        try:
+            self.names
+        except AttributeError:
+            assert isinstance(key, int)
+            
+        if isinstance(key, int) and key not in self.names:
+            return self._list[key]
+        
+        return {x.name: x for x in self._list}[key]
 
-    def asdict(self):
-        return {b.name: b for b in self()}
-
+class Buttons(AssetContainer):
+    """Manager for buttons in a matplotlib figure or GUI (see GenericBrowser for example)"""
     def add(self, text='Button', action_func=None, pos=None, w=0.25, h=0.05, buf=0.01, type_='Push', **kwargs):
         """
         Add a button to the parent figure / object
@@ -204,68 +214,55 @@ class Buttons:
             else:
                 b.on_clicked(action_func)
         
-        self().append(b)
+        self._list.append(b)
         return b
 
 
-class Selectors:
+class Selectors(AssetContainer):
     """Manager for selector objects - for picking points on line2D objects"""
-    def __init__(self, parent):
-        self._lasso_list : list[Selector] = []
-        self.parent = parent
-    
-    def __call__(self):
-        return self._lasso_list
-    
-    def __len__(self):
-        return len(self())
-
     def add(self, plot_handle):
         ls = Selector(plot_handle)
-        self._lasso_list.append(ls)
+        self._list.append(ls)
         return ls
         
-class MemorySlots:
+class MemorySlots(AssetContainer):
     def __init__(self, parent):
-        self._idx = self.initialize()
+        super().__init__(parent)
+        self._list = self.initialize()
         self._memtext = None
-        self.parent = parent
-    
-    def __len__(self):
-        return len(self._idx)
 
     @staticmethod
     def initialize():
         return {str(k):None for k in range(1, 10)}
 
     def disable(self):
-        self._idx = {}
+        self._list = {}
     
     def enable(self):
-        self._idx = self.initialize()
+        self._list = self.initialize()
 
     def show(self, pos='bottom left'):
-        self._memtext = TextView(self._idx, fax=self.parent.figure, pos=pos)
+        self._memtext = TextView(self._list, fax=self.parent.figure, pos=pos)
     
     def update(self, key):
         """
         memory slot handling - Initiate when None, Go to the slot if it exists, frees slot if pressed when it exists
         key is the event.key triggered by a callback
         """
-        if self._idx[key] is None:
-            self._idx[key] = self.parent._current_idx
+        if self._list[key] is None:
+            self._list[key] = self.parent._current_idx
             self.update_display()
-        elif self._idx[key] == self.parent._current_idx:
-            self._idx[key] = None
+        elif self._list[key] == self.parent._current_idx:
+            self._list[key] = None
             self.update_display()
         else:
-            self.parent._current_idx = self._idx[key]
+            self.parent._current_idx = self._list[key]
             self.parent.update()
     
     def update_display(self):
         """Refresh memory slot text if it is not hidden"""
         if self._memtext is not None:
-            self._memtext.update(self._idx)
+            self._memtext.update(self._list)
 
     def hide(self):
         """Hide the memory slot text"""
@@ -274,7 +271,7 @@ class MemorySlots:
         self._memtext = None
     
     def is_enabled(self):
-        return bool(self._idx)
+        return bool(self._list)
 
 class StateVariable:
     def __init__(self, name:str, states:list):
@@ -303,23 +300,10 @@ class StateVariable:
             assert state in self.states
             self._current_state_idx = self.states.index(state)
 
-class StateVariables:
+class StateVariables(AssetContainer):
     def __init__(self, parent):
-        self._list : list[StateVariable] = []
-        self.parent = parent
+        super().__init__(parent)
         self._text = None
-
-    def __len__(self):
-        return len(self._list)
-    
-    def __getitem__(self, key):
-        """return the state variable by name key"""
-        assert key in self.names
-        return {x.name:x for x in self._list}[key]
-    
-    @property
-    def names(self):
-        return [x.name for x in self._list]
     
     def asdict(self):
         return {x.name:x.states for x in self._list}
@@ -719,24 +703,11 @@ class Event:
         return ret
     
 
-class Events:
+class Events(AssetContainer):
     def __init__(self, parent):
-        self._list : list = [] # list of some type of event
-        self.parent = parent
+        super().__init__(parent)
         self._text = None
 
-    def __len__(self):
-        return len(self._list)
-    
-    def __getitem__(self, key):
-        """return the state variable by name key"""
-        assert key in self.names
-        return {x.name:x for x in self._list}[key]
-    
-    @property
-    def names(self):
-        return [x.name for x in self._list]
-    
     def add(self, 
             name,
             size, 
@@ -864,7 +835,7 @@ class GenericBrowser:
                     f(event)
                 else:
                     f() # this may or may not redraw everything
-            if event.key in self.memoryslots._idx:
+            if event.key in self.memoryslots._list:
                 self.memoryslots.update(event.key)
         elif event.name == 'close_event': # perform cleanup
             self.cleanup()
@@ -1251,9 +1222,9 @@ class VideoBrowser(GenericBrowser):
             use_subprocess = True
 
         if start_frame is None:
-            start_frame = self.memoryslots._idx['1']
+            start_frame = self.memoryslots._list['1']
         if end_frame is None:
-            end_frame = self.memoryslots._idx['2']
+            end_frame = self.memoryslots._list['2']
         assert end_frame > start_frame
         start_time = float(start_frame)/self.fps
         end_time = float(end_frame)/self.fps
@@ -1364,9 +1335,9 @@ class VideoPlotBrowser(GenericBrowser):
         import shutil
         import subprocess
         if start_frame is None:
-            start_frame = self.memoryslots._idx['1']
+            start_frame = self.memoryslots._list['1']
         if end_frame is None:
-            end_frame = self.memoryslots._idx['2']
+            end_frame = self.memoryslots._list['2']
         assert end_frame > start_frame
         if sav_dir is None:
             sav_dir = os.path.join(CLIP_FOLDER, datetime.now().strftime("%Y%m%d_%H%M%S"))
@@ -1487,9 +1458,9 @@ class VideoPointAnnotator(VideoBrowser):
         super().__call__(event)
         if event.name == 'key_press_event': 
             if event.key in self.annotations.labels:
-                self._current_label = event.key
+                self._current_label = str(event.key)
             elif event.key in [str(x) for x in range(10)]:
-                self._current_label = event.key
+                self._current_label = str(event.key)
                 self.add_new_label(self._current_label)
             self.update_current_label_text(draw=True)
     
@@ -1515,6 +1486,7 @@ class VideoPointAnnotator(VideoBrowser):
             plt.draw()
 
     def _add_annotation(self, location, frame_number=None, label=None):
+        """Core function for adding annotations. Allows more control."""
         assert len(location) == 2
         if frame_number is None:
             frame_number = self._current_idx
@@ -1523,12 +1495,12 @@ class VideoPointAnnotator(VideoBrowser):
         self.annotations.data[label][frame_number] = list(location)
 
     def add_annotation(self, event):
-        # Add annotation at frame. If it exists, it'll get overwritten.
+        """Add annotation at frame. If it exists, it'll get overwritten."""
         self._add_annotation([float(event.xdata), float(event.ydata)])
         self.update()
     
     def remove_annotation(self, event=None):
-        # remove annotation at the current frame if it exists
+        """remove annotation at the current frame if it exists"""
         self.annotations.data[self._current_label].pop(self._current_idx, None)
         self.update()
     
@@ -1605,13 +1577,19 @@ class VideoAnnotation:
         to_dlc: Convert from json file format into a deeplabcut dataframe format, and optionally save the file.
     
     """
-    def __init__(self, fname: str=None, vname: str=None):
+    def __init__(self, fname: str=None, vname: str=None, name: str=None):
         self.fname, vname = self._parse_inp(fname, vname)
 
         if self.fname is not None:
-            self.name = Path(fname).stem
+            self.fstem = Path(fname).stem
         else:
-            self.name = None
+            self.fstem = None
+        
+        if name is None:
+            if self.fstem is None:
+                name = 'video_annotation'
+            else:
+                name = self.fstem
 
         if video.is_video(vname):
             self.video = Video(vname)
@@ -1829,7 +1807,7 @@ class VideoAnnotation:
         df = df.apply(lambda col:pd.to_numeric(col, errors='coerce'))
 
         if file_prefix is None:
-            file_prefix = self.name
+            file_prefix = self.fstem
         elif file_prefix == 'dlc': # usual dlc name
             file_prefix = f"CollectedData_{scorer}"
         else:
@@ -1840,6 +1818,7 @@ class VideoAnnotation:
             df.to_csv(labeled_data_file_prefix + '.csv')
             df.to_hdf(labeled_data_file_prefix + '.h5', key="df_with_missing", mode="w")
         return df
+    
 
 def lucas_kanade(
         video: Union[Video, VideoReader, str, Path], 
