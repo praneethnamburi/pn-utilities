@@ -1417,7 +1417,6 @@ class VideoPointAnnotator(VideoBrowser):
         self.palette = self.get_default_color_palette(len(self.annotations))
         for label, color in zip(self.annotations.labels, self.palette):
             self.plot_handles[f'label_{label}'], = self._ax.plot([], [], 'o', color=color)
-            self.plot_handles[f'trace_{label}'], = self._ax.plot([], [], color=color)
 
         self.add_key_binding('/', self.add_annotation)
         self.add_key_binding('t', self.add_annotation)
@@ -1472,10 +1471,26 @@ class VideoPointAnnotator(VideoBrowser):
                 ret[this_label] = np.array([[np.nan, np.nan]])
         return ret
     
+    def add_new_label(self, label: str, color=None):
+        assert label not in self.annotations.labels
+        assert label in [str(x) for x in range(10)] # for now, might remove this limitation in the future
+        if color is None:
+            color = self.get_default_color_palette()[len(self.annotations)]
+        assert isinstance(color, (list, tuple)) and len(color) == 3
+        
+        print(f'Creating new label {label}')
+        self.annotations.data[label] = {}
+        self.palette = self.palette + [color]
+        self.plot_handles[f'label_{label}'], = self._ax.plot([], [], 'o', color=color)
+
     def __call__(self, event):
         super().__call__(event)
-        if event.name == 'key_press_event' and event.key in self.annotations.labels:
-            self._current_label = event.key
+        if event.name == 'key_press_event': 
+            if event.key in self.annotations.labels:
+                self._current_label = event.key
+            elif event.key in [str(x) for x in range(10)]:
+                self._current_label = event.key
+                self.add_new_label(self._current_label)
             self.update_current_label_text(draw=True)
     
     def update(self):
