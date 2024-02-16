@@ -1496,6 +1496,10 @@ class VideoPointAnnotator(VideoBrowser):
     def _get_next_annotated_frame(self):
         return min([x for x in self.ann.get_frames(self._current_label) if x > self._current_idx])
     
+    def _get_nearest_annotated_frame(self):
+        d = {abs(x-self._current_idx):x for x in self.ann.get_frames(self._current_label)}
+        return d[min(d)]
+    
     def previous_annotation(self, event=None):
         try:
             self._current_idx = self._get_previous_annotated_frame()
@@ -1518,7 +1522,7 @@ class VideoPointAnnotator(VideoBrowser):
         if self._current_idx not in self.ann.frames:
             self.decrement()
 
-    def predict_points_with_lucas_kanade(self, labels='all'):
+    def predict_points_with_lucas_kanade(self, labels='all', start_frame=None, mode='full'):
         if labels == 'all':
             labels = self.ann.labels
         elif labels == 'current':
@@ -1529,13 +1533,14 @@ class VideoPointAnnotator(VideoBrowser):
         else: # specify a list of labels
             assert all([label in self.ann.labels for label in labels])
 
+        if start_frame is None:
+            start_frame = self._get_nearest_annotated_frame()
+        
+        end_frame = self._current_idx # always predict at the current location
+        
         video = self.data
-        start_frame = self._get_previous_annotated_frame()
-        end_frame = self._current_idx
-        if end_frame <= start_frame:
-            return
         init_loc = [self.ann.data[label][start_frame] for label in labels]
-        tracked_loc = lucas_kanade(video, start_frame, end_frame, init_loc, mode='full')
+        tracked_loc = lucas_kanade(video, start_frame, end_frame, init_loc, mode=mode)
         end_loc_all = tracked_loc[-1]
         for label, end_loc in zip(labels, end_loc_all):
             if end_frame in self.ann.get_frames(label):
@@ -1942,13 +1947,13 @@ def lucas_kanade(
         mode: str='full', 
         **lk_config
         ) -> np.ndarray:
-    """Track points in video using lucas kanade
+    """Track points in a video using Lucas-Kanade algorithm.
 
     Args:
         video (decord.VideoReader): video object.
         start_frame (int): Initial frame for tracking.
         end_frame (int): Final frame (inclusive).
-        init_points (np.ndarray): n_points x 2
+        init_points (np.ndarray): n_points x 2. Locations to be tracked at start_frame.
         mode (str, optional): 'full' tracks the points at every frame in the entire segment. 
             'direct' tracks the point at the last frame using the first frame. 
             Defaults to 'full'.
@@ -1959,49 +1964,59 @@ def lucas_kanade(
     def gray(self, frame_num: int):
         return cv.cvtColor(self[frame_num].asnumpy(), cv.COLOR_BGR2GRAY)
     
+    # input validation
     if isinstance(video, (str, Path)):
         assert os.path.exists(video)
         video = VideoReader(video)
 
+    direction = 'forward' if end_frame > start_frame else 'back'
+
     init_points = np.array(init_points).astype(np.float32)
+    if init_points.ndim == 1:
+        init_points = init_points[np.newaxis, :]
+    assert init_points.shape[-1] == 2
+    if init_points.ndim == 2:
+        init_points = init_points.reshape((init_points.shape[0], 1, 2))
 
     assert mode in ('direct', 'full')
 
     lk_config_default = dict(
-            winSize=(60, 60), 
+            winSize=(45, 45), 
             maxLevel=2, 
             criteria=(cv.TERM_CRITERIA_EPS | cv.TERM_CRITERIA_COUNT, 10, 0.03)
         )
     lk_config = {**lk_config_default, **lk_config}
 
-    if init_points.ndim == 1:
-        init_points = init_points[np.newaxis, :]
-
-    n_points = init_points.shape[0]
-    assert init_points.shape[-1] == 2
-    if init_points.ndim == 2:
-        init_points = init_points.reshape((n_points, 1, 2))
-
-    if mode == 'full':
-        n_frames = end_frame - start_frame + 1
-        tracked_points = np.nan*np.zeros((n_frames, n_points, 2))
-        frame_count = 0
-        tracked_points[frame_count] = init_points[:, 0, :]
-        fi = gray(video, start_frame)
-        for frame_num in range(start_frame+1, end_frame+1):
-            frame_count = frame_count + 1
-            ff = gray(video, frame_num)
-            fp, _, _ = cv.calcOpticalFlowPyrLK(fi, ff, init_points, None, **lk_config)
-            tracked_points[frame_count] = fp[:, 0, :]
-            fi = ff
-            init_points = fp
+    # compute locations at end_frame based on locations at start_frame
+    fi = gray(video, start_frame)
+    if mode == 'direct':
+        ff = gray(video, end_frame)
+        fp, _, _ = cv.calcOpticalFlowPyrLK(fi, ff, init_points, None, **lk_config)
+        tracked_points = fp[:, 0, :][np.newaxis, :, :]
         return tracked_points
 
-    fi = gray(video, start_frame)
-    ff = gray(video, end_frame)
-    fp, _, _ = cv.calcOpticalFlowPyrLK(fi, ff, init_points, None, **lk_config)
-    tracked_points = fp[:, 0, :][np.newaxis, :, :]
+    # compute locations at every frame iteratively from start_frame to end_frame
+    assert mode == 'full' # for readability
+    n_frames = np.abs(end_frame - start_frame) + 1
+    if direction == 'forward':
+        frame_numbers = np.arange(start_frame+1, end_frame+1, 1)
+    else:
+        frame_numbers = np.arange(start_frame-1, end_frame-1, -1)
+
+    n_points = init_points.shape[0] # number of tracked points
+
+    tracked_points = np.full((n_frames, n_points, 2), np.nan)
+    frame_count = 0
+    tracked_points[frame_count] = init_points[:, 0, :]
+    for frame_num in frame_numbers:
+        frame_count = frame_count + 1
+        ff = gray(video, frame_num)
+        fp, _, _ = cv.calcOpticalFlowPyrLK(fi, ff, init_points, None, **lk_config)
+        tracked_points[frame_count] = fp[:, 0, :]
+        fi = ff
+        init_points = fp
     return tracked_points
+
 
 class TextView:
     """Show text array line by line"""
