@@ -21,7 +21,7 @@ import json
 import os
 from datetime import datetime, timedelta
 from pathlib import Path
-from typing import Union
+from typing import Union, Mapping
 
 import cv2 as cv
 from decord import VideoReader, cpu
@@ -1701,7 +1701,7 @@ class VideoAnnotation:
     def n_frames(self):
         """Number of frames in the video being annotated"""
         if self.video is None:
-            return None
+            return max(self.frames, default=-1)+1
         return len(self.video)
     
     @property
@@ -1822,6 +1822,52 @@ class VideoAnnotation:
             df.to_hdf(labeled_data_file_prefix + '.h5', key="df_with_missing", mode="w")
         return df
     
+    def to_trace(self, label: str) -> np.ndarray:
+        """Return a 2d numpy array of n_frames x 2.
+
+        Args:
+            label (str): Annotation label.
+
+        Returns:
+            np.ndarray: 2d numpy array of number of frames x 2. 
+                xy position values of uannotated frames will be filled with np.nan.
+        """        
+        assert  label in self.labels
+        ret = np.full([self.n_frames, 2], np.nan)
+        for frame_number, frame_xy in self.data[label].items():
+            ret[frame_number, :] = frame_xy
+        return ret
+    
+    def to_traces(self) -> Mapping[str, np.ndarray]:
+        """Return annotations as traces (numpy arrays of size n_frames x 2).
+
+        Returns:
+            Mapping[str, np.ndarray]: Dictionary mapping labels to 2d numpy arrays.
+        """        
+        return {label:self.to_trace(label) for label in self.labels}
+    
+    def to_signal(self, label: str) -> sampled.Data:
+        """Return an annotation as sampled Data at the frame rate of the video.
+
+        Args:
+            label (str): Annotation label.
+
+        Returns:
+            sampled.Data: Signal sampled at the frame rate of the video being annotated.
+        """
+        assert self.video is not None
+        assert label in self.labels
+        return sampled.Data(self.to_trace(label), sr=self.video.get_avg_fps())
+    
+    def to_signals(self) -> Mapping[str, sampled.Data]:
+        """Return annotations as a dictionary of sampled Data signals
+        sampled at the frame rate of the video being annotated.
+
+        Returns:
+            Mapping[str, sampled.Data]: Dictionary mapping labels to sampled.Data.
+        """        
+        return {label:self.to_signal(label) for label in self.labels}
+
     def add_label(self, label=None, color=None):
         if label is None: # pick the next available label
             assert len(self.labels) < 10
