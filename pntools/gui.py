@@ -2017,6 +2017,70 @@ def lucas_kanade(
         init_points = fp
     return tracked_points
 
+def lucas_kanade_rstc(
+        video: Union[Video, VideoReader, str, Path], 
+        start_frame: int, 
+        end_frame: int, 
+        start_points: np.ndarray, 
+        end_points: np.ndarray,
+        target_frame: int = None,
+        **lk_config
+        ) -> np.ndarray:
+    """Track points in a video using Lucas-Kanade algorithm,
+    and apply the reverse sigmoid tracking correction (RSTC)
+    as described in Magana-Salgado et al., 2023.
+    """
+    assert end_frame > start_frame
+
+    if target_frame is None:
+        mode = 'full'
+    else:
+        assert isinstance(target_frame, int)
+        mode = 'direct'
+
+    forward_path = lucas_kanade(video, start_frame, end_frame, start_points, mode, **lk_config)
+    reverse_path = lucas_kanade(video, end_frame, start_frame, end_points, mode, **lk_config)
+    assert forward_path.shape == reverse_path.shape
+    n_frames, n_points = forward_path.shape[:2]
+    
+    epsilon = 0.01
+    b = 2*np.log(1/epsilon - 1)/(end_frame-start_frame)
+    c = (end_frame + start_frame)/2
+    x = np.r_[start_frame:end_frame+1] if mode == 'full' else target_frame
+    sigmoid_forward = ( 1/(1+np.exp(b*(x-c))) - 0.5)/(1-2*epsilon) + 0.5
+    sigmoid_reverse = ( 1/(1+np.exp(-b*(x-c))) - 0.5)/(1-2*epsilon) + 0.5
+
+    s_f = np.broadcast_to(sigmoid_forward[:, np.newaxis, np.newaxis], (n_frames, n_points, 2))
+    s_r = np.broadcast_to(sigmoid_reverse[:, np.newaxis, np.newaxis], (n_frames, n_points, 2))
+    
+    rstc_path = forward_path*s_f + np.flip(reverse_path, 0)*s_r
+    return rstc_path
+
+def test_lucas_kanade_rstc():
+    vname = r"C:\Dropbox (MIT)\File requests\_Praneeth\opr02_s004_us_b_006.mp4"
+    video = VideoReader(vname)
+    start_frame = 849
+    end_frame = 904
+
+    start_points = [
+        [153.81, 195.34],
+        [231.90, 209.27]
+    ]
+
+    end_points = [
+        [166.24, 166.74],
+        [246.63, 181.54]
+    ]
+
+    forward_path = lucas_kanade(video, start_frame, end_frame, start_points, mode='full')
+    reverse_path = lucas_kanade(video, end_frame, start_frame, end_points, mode='full')
+
+    rstc_path = lucas_kanade_rstc(video, start_frame, end_frame, start_points, end_points)
+    plt.figure()
+    plt.plot(np.array([forward_path[:, 0, 0], np.flip(reverse_path, 0)[:, 0, 0], rstc_path[:, 0, 0]]).T)
+    plt.legend(['Forward', 'Reverse', 'RSTC'])
+    plt.show(block=False)
+    
 
 class TextView:
     """Show text array line by line"""
