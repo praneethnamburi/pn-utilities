@@ -327,8 +327,10 @@ class StateVariables(AssetContainer):
     def show(self, pos='bottom right'):
         self._text = TextView(self._get_display_text(), fax=self.parent.figure, pos=pos)
 
-    def update_display(self):
+    def update_display(self, draw=True):
         self._text.update(self._get_display_text())
+        if draw:
+            plt.draw()
 
 class EventData:
     """
@@ -1381,23 +1383,43 @@ class VideoPointAnnotator(VideoBrowser):
     If you're doing one label at a time, then pick the frames for the first label arbitrarily.
     For the second label onwards, 
     """
-    def __init__(self, vid_name, annotation_name='', titlefunc=None):
+    def __init__(self, 
+        vid_name: str, 
+        annotation_names: list[str] = '', 
+        titlefunc: Callable = None
+        ):
         figure_handle, _ax = plt.subplots(1, 1) # height_ratiors=[4,1,1]
         super().__init__(vid_name, titlefunc, _ax)
         self.memoryslots.hide()
         self.memoryslots.disable()
 
-        self.fname_annotations = self._get_fname_annotations(annotation_name)
+        # annotation layers
         self.annotations = VideoAnnotations(parent=self)
-        ann = self.annotations.add(name=annotation_name, fname=self.fname_annotations, vname=self.fname)
-        ann.setup_display(self._ax, palette='Set2')
-        self.add_key_binding('s', on_press_function=self.ann.save)
+        self.load_annotation_layers(annotation_names)        
 
-        self._current_label = '0'
-        self._current_label_text = TextView([f'Current label: {self._current_label}'], self.figure, pos='bottom center')
+        # State variables
+        self.statevariables.add('annotation_layer', self.annotations.names)
+        self.statevariables.add('annotation_label', self.ann.labels)
+        self.statevariables.show(pos='bottom center')
 
-        self.plot_handles = {}
+        self.set_key_bindings()
 
+        plt.show(block=False)
+        self.update()
+            
+    def load_annotation_layers(self, annotation_names):
+        if isinstance(annotation_names, str):
+            annotation_names = [annotation_names]
+        for annotation_name in annotation_names:
+            ann = self.annotations.add(
+                name=annotation_name, 
+                fname=self._get_fname_annotations(annotation_name), 
+                vname=self.fname
+                )
+            ann.setup_display(self._ax, palette='Set2')
+    
+    def set_key_bindings(self):
+        self.add_key_binding('s', self.ann.save, 'Save current annotation layer')
         self.add_key_binding('/', self.add_annotation)
         self.add_key_binding('t', self.add_annotation)
         self.add_key_binding('.', self.remove_annotation)
@@ -1408,6 +1430,9 @@ class VideoPointAnnotator(VideoBrowser):
         self.add_key_binding('f', self.increment_if_unannotated)
         self.add_key_binding('g', self.increment)
         self.add_key_binding('d', self.decrement_if_unannotated)
+
+        self.add_key_binding(']', self.next_annotation_layer)
+        self.add_key_binding('[', self.previous_annotation_layer)
 
         self.add_key_binding(
             'v', 
@@ -1420,57 +1445,43 @@ class VideoPointAnnotator(VideoBrowser):
             (lambda s: s.predict_points_with_lucas_kanade(labels='all')).__get__(self), 
             'Predict all points with lucas-kanade'
             )
-
-        plt.show(block=False)
-        self.update()
-    
+                
     @property
     def ann(self) -> VideoAnnotation:
-        """Return current (right now, first and only)  annotation."""
-        return self.annotations[0]
+        """Return current annotation."""
+        return self.annotations[self.statevariables['annotation_layer'].current_state]
     
-    def _get_fname_annotations(self, annotation_name):
+    @property
+    def _current_label(self) -> str:
+        """Return current label '0'-'9'."""
+        return self.statevariables['annotation_label'].current_state
+    
+    def _get_fname_annotations(self, annotation_name, suffix='.json'):
         return os.path.join(
             Path(self.fname).parent, 
             Path(self.fname).stem 
             + '_annotations'
             + f'{"_" if annotation_name else ""}'
             + annotation_name
-            + '.json'
+            + suffix
             )
-
-    def _parse_labels_pos(self, labels_pos):
-        if labels_pos is None:
-            labels_pos = {}
-        
-        ret = {}
-        for this_label in self.ann.labels:
-            if this_label in labels_pos:
-                ret[this_label] = labels_pos[this_label]
-            else:
-                ret[this_label] = np.array([[np.nan, np.nan]])
-        return ret
 
     def __call__(self, event):
         super().__call__(event)
         if event.name == 'key_press_event': 
             if event.key in self.ann.labels:
-                self._current_label = str(event.key)
+                self.statevariables['annotation_label'].set_state(str(event.key))
             elif event.key in [str(x) for x in range(10)]:
-                self._current_label = str(event.key)
-                self.ann.add_label(self._current_label)
-            self.update_current_label_text(draw=True)
+                self.ann.add_label(str(event.key))
+                self.statevariables['annotation_label'].states = self.ann.labels
+                self.statevariables['annotation_label'].set_state(str(event.key))
+            self.statevariables.update_display(draw=True)
     
     def update(self):
         self.ann.update_display(self._current_idx, draw=False)
-        self.update_current_label_text(draw=False)
+        self.statevariables.update_display(draw=False)
         super().update()
         self.reset_axes()
-
-    def update_current_label_text(self, draw=False):
-        self._current_label_text.update([f'Current label: {self._current_label}'])
-        if draw:
-            plt.draw()
 
     def _add_annotation(self, location, frame_number=None, label=None):
         """Core function for adding annotations. Allows more control."""
@@ -1513,6 +1524,16 @@ class VideoPointAnnotator(VideoBrowser):
             self.update()
         except ValueError:
             return
+    
+    def previous_annotation_layer(self):
+        self.statevariables['annotation_layer'].cycle_back()
+        self.statevariables['annotation_label'].states = self.ann.labels
+        self.update()
+
+    def next_annotation_layer(self):
+        self.statevariables['annotation_layer'].cycle()
+        self.statevariables['annotation_label'].states = self.ann.labels
+        self.update()
         
     def increment_if_unannotated(self, event=None):
         if self._current_idx not in self.ann.frames:
@@ -1888,7 +1909,6 @@ class VideoAnnotation:
             self.palette[len(self.labels)] = tuple(color)
         
         self.data[label] = {}
-        self.setup_display()
         
         print(f'Created new label {label}')
         
@@ -1919,18 +1939,15 @@ class VideoAnnotation:
 
         self.plot_handles['ax_list'] = ax_list
         for ax_cnt, ax in enumerate(ax_list):
-            for label, color in zip(self.labels, self.palette):
-                handle_name = f'label_{label}_in_ax{ax_cnt}'
-                if handle_name not in self.plot_handles:
-                    self.plot_handles[handle_name], = ax.plot([], [], 'o', color=color)
+            n_pts = len(self.palette) # to keep all 10 points, some of them can be nan
+            self.plot_handles[f'labels_in_ax{ax_cnt}'] = ax.scatter([np.nan]*n_pts, [np.nan]*n_pts, color=self.palette, picker=5)
 
     def update_display(self, frame_number, draw=False):
         for ax_cnt in range(len(self.plot_handles['ax_list'])):
-            for label, annot_dict in self.data.items():
-                this_data = ([], [])
-                if frame_number in annot_dict:
-                    this_data = annot_dict[frame_number]
-                self.plot_handles[f'label_{label}_in_ax{ax_cnt}'].set_data(*this_data)
+            n_pts = len(self.palette)
+            scatter_offsets = np.full((n_pts, 2), np.nan)
+            scatter_offsets[:len(self.labels), :] = self.get_at_frame(frame_number)
+            self.plot_handles[f'labels_in_ax{ax_cnt}'].set_offsets(scatter_offsets)
         if draw:
             plt.draw()
 
