@@ -21,7 +21,7 @@ import json
 import os
 from datetime import datetime, timedelta
 from pathlib import Path
-from typing import Union, Mapping
+from typing import Union, Mapping, Callable
 
 import cv2 as cv
 from decord import VideoReader, cpu
@@ -1388,7 +1388,7 @@ class VideoPointAnnotator(VideoBrowser):
         annotation_names: list[str] = '', 
         titlefunc: Callable = None
         ):
-        figure_handle, _ax = plt.subplots(1, 1) # height_ratiors=[4,1,1]
+        figure_handle, _ax = plt.subplots(1, 1, figsize=(10, 8)) # height_ratiors=[4,1,1]
         super().__init__(vid_name, titlefunc, _ax)
         self.memoryslots.hide()
         self.memoryslots.disable()
@@ -1400,7 +1400,8 @@ class VideoPointAnnotator(VideoBrowser):
         # State variables
         self.statevariables.add('annotation_layer', self.annotations.names)
         self.statevariables.add('annotation_label', self.ann.labels)
-        self.statevariables.show(pos='bottom center')
+        self.statevariables.add('number_keys', ['select', 'place'])
+        self.statevariables.show(pos='bottom left')
 
         self.set_key_bindings()
 
@@ -1420,20 +1421,27 @@ class VideoPointAnnotator(VideoBrowser):
                 )
     
     def set_key_bindings(self):
-        self.add_key_binding('s', self.ann.save, 'Save current annotation layer')
+        self.add_key_binding('s', self.save, 'Save current annotation layer')
         self.add_key_binding('/', self.add_annotation)
         self.add_key_binding('t', self.add_annotation)
         self.add_key_binding('.', self.remove_annotation)
         self.add_key_binding('y', self.remove_annotation)
 
-        self.add_key_binding('n', self.next_annotation)
-        self.add_key_binding('p', self.previous_annotation)
         self.add_key_binding('f', self.increment_if_unannotated)
         self.add_key_binding('g', self.increment)
         self.add_key_binding('d', self.decrement_if_unannotated)
 
-        self.add_key_binding(']', self.next_annotation_layer)
-        self.add_key_binding('[', self.previous_annotation_layer)
+        self.add_key_binding("[", self.previous_annotation_layer)
+        self.add_key_binding("]", self.next_annotation_layer)
+        self.add_key_binding(';', self.previous_annotation_label)
+        self.add_key_binding("'", self.next_annotation_label)
+        self.add_key_binding(",", self.previous_frame_with_any_label)
+        self.add_key_binding(".", self.next_frame_with_any_label)
+        
+        self.add_key_binding("=", self.cycle_number_keys_behavior)
+
+        self.add_key_binding('n', self.next_frame_with_current_label)
+        self.add_key_binding('p', self.previous_frame_with_current_label)
 
         self.add_key_binding(
             'v', 
@@ -1449,7 +1457,7 @@ class VideoPointAnnotator(VideoBrowser):
                 
     @property
     def ann(self) -> VideoAnnotation:
-        """Return current annotation."""
+        """Return current annotation layer."""
         return self.annotations[self.statevariables['annotation_layer'].current_state]
     
     @property
@@ -1469,13 +1477,17 @@ class VideoPointAnnotator(VideoBrowser):
 
     def __call__(self, event):
         super().__call__(event)
-        if event.name == 'key_press_event': 
+        if event.name == 'key_press_event':
             if event.key in self.ann.labels:
                 self.statevariables['annotation_label'].set_state(str(event.key))
+                if self.statevariables['number_keys'].current_state == 'place':
+                    self.add_annotation(event)
             elif event.key in [str(x) for x in range(10)]:
                 self.ann.add_label(str(event.key))
                 self.statevariables['annotation_label'].states = self.ann.labels
                 self.statevariables['annotation_label'].set_state(str(event.key))
+                if self.statevariables['number_keys'].current_state == 'place':
+                    self.add_annotation(event)
             self.statevariables.update_display(draw=True)
     
     def update(self):
@@ -1485,6 +1497,7 @@ class VideoPointAnnotator(VideoBrowser):
         self.reset_axes()
     
     def update_annotation_visibility(self, draw=False):
+        """Update the visibility of all annotation layers, for example, when the layer is changed."""
         for ann in self.annotations:
             if ann.name == self.ann.name:
                 ann.show(draw=draw)
@@ -1508,30 +1521,31 @@ class VideoPointAnnotator(VideoBrowser):
         """remove annotation at the current frame if it exists"""
         self.ann.remove(self._current_label, self._current_idx)
         self.update()
-    
-    def _get_previous_annotated_frame(self):
-        return max([x for x in self.ann.get_frames(self._current_label) if x < self._current_idx])
-    
-    def _get_next_annotated_frame(self):
-        return min([x for x in self.ann.get_frames(self._current_label) if x > self._current_idx])
-    
-    def _get_nearest_annotated_frame(self):
+
+    def _get_nearest_annotated_frame(self) -> int:
+        """Return the nearest frame (in either direction) number with the current label in the current annotation layer."""
         d = {abs(x-self._current_idx):x for x in self.ann.get_frames(self._current_label)}
         return d[min(d)]
     
-    def previous_annotation(self, event=None):
-        try:
-            self._current_idx = self._get_previous_annotated_frame()
-            self.update()
-        except ValueError:
-            return
+    def previous_frame_with_current_label(self, event=None):
+        """Go to the previous frame with the current label in the current annotation layer."""
+        self._current_idx = max([x for x in self.ann.get_frames(self._current_label) if x < self._current_idx], default=self._current_idx)
+        self.update()
 
-    def next_annotation(self, event=None):
-        try:
-            self._current_idx = self._get_next_annotated_frame()
-            self.update()
-        except ValueError:
-            return
+    def next_frame_with_current_label(self, event=None):
+        """Go to the next frame with the current label in the current annotation layer."""
+        self._current_idx = min([x for x in self.ann.get_frames(self._current_label) if x > self._current_idx], default=self._current_idx)
+        self.update()
+    
+    def previous_frame_with_any_label(self, event=None):
+        """Go to the previous frame with any label in the current annotation layer."""
+        self._current_idx = max([x for x in self.ann.frames if x < self._current_idx], default=self._current_idx)
+        self.update()
+
+    def next_frame_with_any_label(self, event=None):
+        """Go to the next frame with any label in the current annotation layer."""
+        self._current_idx = min([x for x in self.ann.frames if x > self._current_idx], default=self._current_idx)
+        self.update()
     
     def previous_annotation_layer(self):
         self.statevariables['annotation_layer'].cycle_back()
@@ -1544,6 +1558,20 @@ class VideoPointAnnotator(VideoBrowser):
         self.statevariables['annotation_label'].states = self.ann.labels
         self.update_annotation_visibility()
         self.update()
+    
+    def previous_annotation_label(self):
+        """Set current annotation label to the previous one."""
+        self.statevariables['annotation_label'].cycle_back()
+        self.update()
+    
+    def next_annotation_label(self):
+        """Set current annotation label to the next one."""
+        self.statevariables['annotation_label'].cycle()
+        self.update()
+    
+    def cycle_number_keys_behavior(self):
+        self.statevariables['number_keys'].cycle()
+        self.update()
         
     def increment_if_unannotated(self, event=None):
         if self._current_idx not in self.ann.frames:
@@ -1552,6 +1580,9 @@ class VideoPointAnnotator(VideoBrowser):
     def decrement_if_unannotated(self, event=None):
         if self._current_idx not in self.ann.frames:
             self.decrement()
+    
+    def save(self):
+        self.ann.save()
 
     def predict_points_with_lucas_kanade(self, labels='all', start_frame=None, mode='full'):
         if labels == 'all':
