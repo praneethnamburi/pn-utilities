@@ -1411,12 +1411,13 @@ class VideoPointAnnotator(VideoBrowser):
         if isinstance(annotation_names, str):
             annotation_names = [annotation_names]
         for annotation_name in annotation_names:
-            ann = self.annotations.add(
+            self.annotations.add(
                 name=annotation_name, 
                 fname=self._get_fname_annotations(annotation_name), 
-                vname=self.fname
+                vname=self.fname,
+                ax_list=[self._ax],
+                palette_name='Set2'
                 )
-            ann.setup_display(self._ax, palette='Set2')
     
     def set_key_bindings(self):
         self.add_key_binding('s', self.ann.save, 'Save current annotation layer')
@@ -1482,6 +1483,13 @@ class VideoPointAnnotator(VideoBrowser):
         self.statevariables.update_display(draw=False)
         super().update()
         self.reset_axes()
+    
+    def update_annotation_visibility(self, draw=False):
+        for ann in self.annotations:
+            if ann.name == self.ann.name:
+                ann.show(draw=draw)
+            else:
+                ann.hide(draw=draw)
 
     def _add_annotation(self, location, frame_number=None, label=None):
         """Core function for adding annotations. Allows more control."""
@@ -1528,11 +1536,13 @@ class VideoPointAnnotator(VideoBrowser):
     def previous_annotation_layer(self):
         self.statevariables['annotation_layer'].cycle_back()
         self.statevariables['annotation_label'].states = self.ann.labels
+        self.update_annotation_visibility()
         self.update()
 
     def next_annotation_layer(self):
         self.statevariables['annotation_layer'].cycle()
         self.statevariables['annotation_label'].states = self.ann.labels
+        self.update_annotation_visibility()
         self.update()
         
     def increment_if_unannotated(self, event=None):
@@ -1950,6 +1960,19 @@ class VideoAnnotation:
             self.plot_handles[f'labels_in_ax{ax_cnt}'].set_offsets(scatter_offsets)
         if draw:
             plt.draw()
+
+    def _set_visibility(self, visibility: bool=True, draw=False):
+        for plot_handle_name, plot_handle in self.plot_handles.items():
+            if plot_handle_name.startswith('labels_in_ax'):
+                plot_handle.set_visible(visibility)
+        if draw:
+            plt.draw()
+
+    def hide(self, draw=True):
+        self._set_visibility(False, draw)
+
+    def show(self, draw=True):
+        self._set_visibility(True, draw)
 
 class VideoAnnotations(AssetContainer):
     def add(self, name, fname=None, vname=None, **kwargs):
