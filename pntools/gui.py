@@ -1454,6 +1454,9 @@ class VideoPointAnnotator(VideoBrowser):
             (lambda s: s.predict_points_with_lucas_kanade(labels='all')).__get__(self), 
             'Predict all points with lucas-kanade'
             )
+        
+        self.cid.append(self.figure.canvas.mpl_connect('pick_event', self.select_label_with_mouse))
+        self.cid.append(self.figure.canvas.mpl_connect('button_press_event', self.place_label_with_mouse))
                 
     @property
     def ann(self) -> VideoAnnotation:
@@ -1583,6 +1586,18 @@ class VideoPointAnnotator(VideoBrowser):
     
     def save(self):
         self.ann.save()
+    
+    def select_label_with_mouse(self, event):
+        """Select a label by clicking on it with the left mousebutton."""
+        if event.mouseevent.button.name == 'LEFT' and len(event.ind == 1):
+            self.statevariables['annotation_label'].set_state(int(event.ind[0]))
+            print(f'Picked {self._current_label} with index {self.statevariables["annotation_label"].current_state} at frame {self._current_idx}')
+            self.update()
+    
+    def place_label_with_mouse(self, event):
+        """Place the selected label with the right mousebutton."""
+        if event.inaxes == self._ax and event.button.name == 'RIGHT':
+            self.add_annotation(event)
 
     def predict_points_with_lucas_kanade(self, labels='all', start_frame=None, mode='full'):
         if labels == 'all':
