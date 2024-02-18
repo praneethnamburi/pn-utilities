@@ -367,7 +367,7 @@ class Event:
     """
     Manage selection of a sequence of events (of length >= 1)
     """
-    def __init__(self, name, size, fname, data_id_func=None, color='random', pick_action='overwrite', ax_list=None, win_remove=(-0.1, 0.1), win_add=(-0.25, 0.25), **plot_kwargs):
+    def __init__(self, name, size, fname, data_id_func=None, color='random', pick_action='overwrite', ax_list=None, win_remove=(-0.1, 0.1), win_add=(-0.25, 0.25), data_func=float, **plot_kwargs):
         self.name = name
         assert isinstance(size, int) and size > 0
         self.size = size # length of the sequence
@@ -392,6 +392,7 @@ class Event:
         self.win_add = win_add # seconds, search to add an event within this window in peak or valley mode
         self.plot_kwargs = plot_kwargs # tune the style of the plot using this
         self._hide = False
+        self.data_func = data_func
 
     def initialize_event_data(self, data_id_list):
         """Useful for initializing an event"""
@@ -555,7 +556,7 @@ class Event:
                 assert len(self._buffer) == self.size-1 # last in the sequence
                 inferred_timestamp = _get_last_available_timestamp()
         else:
-            inferred_timestamp = clamp(float(event.xdata))
+            inferred_timestamp = clamp(self.data_func(event.xdata))
 
         self._buffer.append(inferred_timestamp)
 
@@ -667,7 +668,7 @@ class Event:
         if type == 'data':
             try:
                 x = np.asarray([(np.nanmin(line.get_ydata()), np.nanmax(line.get_ydata())) for line in this_ax.get_lines() if not line.get_label().startswith('event:')])
-                return np.min(x[:, 0]), np.max(x[:, 1])
+                return np.nanmin(x[:, 0]), np.nanmax(x[:, 1])
             except ValueError:
                 return this_ax.get_ylim()
         return this_ax.get_ylim()
@@ -733,9 +734,10 @@ class Events(AssetContainer):
             remove_key=None,
             save_key=None,
             show=True,
+            data_func=float,
             **plot_kwargs):
         assert name not in self.names
-        this_ev = Event(name, size, fname, data_id_func, color, pick_action, ax_list, win_remove, win_add, **plot_kwargs)
+        this_ev = Event(name, size, fname, data_id_func, color, pick_action, ax_list, win_remove, win_add, data_func,  **plot_kwargs)
         super().add(this_ev)
         if add_key is not None:
             self.parent.add_key_binding(add_key, this_ev.add, f'Add {name}')
@@ -749,7 +751,7 @@ class Events(AssetContainer):
             this_ev._hide = True # This is for fill displays
         return this_ev
     
-    def add_from_file(self, fname, data_id_func, ax_list=None, add_key=None, remove_key=None, save_key=None, show=True, **plot_kwargs):
+    def add_from_file(self, fname, data_id_func, ax_list=None, add_key=None, remove_key=None, save_key=None, show=True, data_func=float, **plot_kwargs):
         """Easier than using add for adding events that are created by another algorithm, and meant to be edited using the gui module."""
         assert os.path.exists(fname)
         ev = Event._from_existing_file(fname)
@@ -757,7 +759,7 @@ class Events(AssetContainer):
         del hdr['all_keys_are_tuples']
         plot_kwargs = hdr['plot_kwargs'] | plot_kwargs
         del hdr['plot_kwargs']
-        return self.add(data_id_func=data_id_func, ax_list=ax_list, add_key=add_key, remove_key=remove_key, save_key=save_key, show=show, **(hdr | plot_kwargs))
+        return self.add(data_id_func=data_id_func, ax_list=ax_list, add_key=add_key, remove_key=remove_key, save_key=save_key, show=show, data_func=data_func, **(hdr | plot_kwargs))
     
     def setup_display(self):
         for ev in self._list:
@@ -1406,6 +1408,8 @@ class VideoPointAnnotator(VideoBrowser):
         self.statevariables.add('number_keys', ['select', 'place'])
         self.statevariables.show(pos='top left')
 
+        self.add_events()
+
         self.set_key_bindings()
         
         # set mouse click behavior
@@ -1413,8 +1417,9 @@ class VideoPointAnnotator(VideoBrowser):
         self.cid.append(self.figure.canvas.mpl_connect('button_press_event', self.place_label_with_mouse))
         self.cid.append(self.figure.canvas.mpl_connect('button_press_event', self.go_to_frame))
 
-        plt.show(block=False)
-        self.update()
+        if self.__class__.__name__ == 'VideoPointAnnotator':
+            plt.show(block=False)
+            self.update()
             
     def load_annotation_layers(self, annotation_names: list[str]):
         """Load data from annotation files if they exist, otherwise initialize annotation layers."""
@@ -1464,16 +1469,41 @@ class VideoPointAnnotator(VideoBrowser):
             (lambda s: s.predict_points_with_lucas_kanade(labels='all')).__get__(self), 
             'Predict all points with lucas-kanade'
             )
+    
+    def add_events(self):
+        """Add an event to specify time intervals for interpolating with lucas-kanade."""
+        event_name = 'interp_with_lk'
+        self.events.add(
+            name         = event_name, 
+            size         = 2,
+            fname        = os.path.join(Path(self.fname).parent, Path(self.fname).stem + f'_events_{event_name}.json'),
+            data_id_func = (lambda s: (s._current_layer, s._current_label)).__get__(self),
+            data_func    = round,
+            color        = 'gray',
+            pick_action  = 'append',
+            ax_list      = [self._ax_trace_x],
+            add_key      = 'x',
+            remove_key   = 'alt+x',
+            save_key     = 'ctrl+x',
+            display_type = 'fill',
+            win_remove   = (10, 10),
+            show         = True
+            )
                 
     @property
     def ann(self) -> VideoAnnotation:
         """Return current annotation layer."""
-        return self.annotations[self.statevariables['annotation_layer'].current_state]
+        return self.annotations[self._current_layer]
     
     @property
     def _current_label(self) -> str:
         """Return current label '0'-'9'."""
         return self.statevariables['annotation_label'].current_state
+    
+    @property
+    def _current_layer(self) -> str:
+        """Return current annotation layer"""
+        return self.statevariables['annotation_layer'].current_state
     
     def _get_fname_annotations(self, annotation_name, suffix='.json'):
         """Construct the filename corresponding to an  annotation layer named annotation_name."""
