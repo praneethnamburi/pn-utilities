@@ -1404,11 +1404,16 @@ class VideoPointAnnotator(VideoBrowser):
         self.statevariables.show(pos='bottom left')
 
         self.set_key_bindings()
+        
+        # set mouse click behavior
+        self.cid.append(self.figure.canvas.mpl_connect('pick_event', self.select_label_with_mouse))
+        self.cid.append(self.figure.canvas.mpl_connect('button_press_event', self.place_label_with_mouse))
 
         plt.show(block=False)
         self.update()
             
-    def load_annotation_layers(self, annotation_names):
+    def load_annotation_layers(self, annotation_names: list[str]):
+        """Load data from annotation files if they exist, otherwise initialize annotation layers."""
         if isinstance(annotation_names, str):
             annotation_names = [annotation_names]
         for annotation_name in annotation_names:
@@ -1421,10 +1426,9 @@ class VideoPointAnnotator(VideoBrowser):
                 )
     
     def set_key_bindings(self):
+        """Set the keyboard actions."""
         self.add_key_binding('s', self.save, 'Save current annotation layer')
-        self.add_key_binding('/', self.add_annotation)
         self.add_key_binding('t', self.add_annotation)
-        self.add_key_binding('.', self.remove_annotation)
         self.add_key_binding('y', self.remove_annotation)
 
         self.add_key_binding('f', self.increment_if_unannotated)
@@ -1454,9 +1458,6 @@ class VideoPointAnnotator(VideoBrowser):
             (lambda s: s.predict_points_with_lucas_kanade(labels='all')).__get__(self), 
             'Predict all points with lucas-kanade'
             )
-        
-        self.cid.append(self.figure.canvas.mpl_connect('pick_event', self.select_label_with_mouse))
-        self.cid.append(self.figure.canvas.mpl_connect('button_press_event', self.place_label_with_mouse))
                 
     @property
     def ann(self) -> VideoAnnotation:
@@ -1469,6 +1470,7 @@ class VideoPointAnnotator(VideoBrowser):
         return self.statevariables['annotation_label'].current_state
     
     def _get_fname_annotations(self, annotation_name, suffix='.json'):
+        """Construct the filename corresponding to an  annotation layer named annotation_name."""
         return os.path.join(
             Path(self.fname).parent, 
             Path(self.fname).stem 
@@ -1479,6 +1481,7 @@ class VideoPointAnnotator(VideoBrowser):
             )
 
     def __call__(self, event):
+        """Callbacks for number keys."""
         super().__call__(event)
         if event.name == 'key_press_event':
             if event.key in self.ann.labels:
@@ -1494,6 +1497,9 @@ class VideoPointAnnotator(VideoBrowser):
             self.statevariables.update_display(draw=True)
     
     def update(self):
+        """Update elements in the UI. This method currently does not handle 
+        updating the visibility of annotation layers.
+        """
         self.ann.update_display(self._current_idx, draw=False)
         self.statevariables.update_display(draw=False)
         super().update()
@@ -1551,6 +1557,10 @@ class VideoPointAnnotator(VideoBrowser):
         self.update()
     
     def _update_statevariable_annotation_label(self):
+        """Update the annotation_label state variable. 
+        Used when the annotation_layer is changed, 
+        and each layer has a different set of labels.
+        """
         x = self.statevariables['annotation_label']
         current_state = x.current_state
         x.states = self.ann.labels
@@ -1560,12 +1570,14 @@ class VideoPointAnnotator(VideoBrowser):
             x.set_state(current_state)
 
     def previous_annotation_layer(self):
+        """Go to the previous annotation layer."""
         self.statevariables['annotation_layer'].cycle_back()
         self._update_statevariable_annotation_label()
         self.update_annotation_visibility()
         self.update()
 
     def next_annotation_layer(self):
+        """Go to the next annotation layer"""
         self.statevariables['annotation_layer'].cycle()
         self._update_statevariable_annotation_label()
         self.update_annotation_visibility()
@@ -1582,18 +1594,28 @@ class VideoPointAnnotator(VideoBrowser):
         self.update()
     
     def cycle_number_keys_behavior(self):
+        """Number keys can be used to either select labels, or place a specific label. 
+        Toggle between these two behaviors.
+        """
         self.statevariables['number_keys'].cycle()
         self.update()
         
     def increment_if_unannotated(self, event=None):
+        """Advance the frame if the current frame doesn't have any annotations.
+        Useful to pause at annotated frames when adding a new label.
+        """
         if self._current_idx not in self.ann.frames:
             self.increment()
     
     def decrement_if_unannotated(self, event=None):
+        """Go to the previous frame if the current frame doesn't have any annotations.
+        Useful to pause at annotated frames when adding a new label.
+        """
         if self._current_idx not in self.ann.frames:
             self.decrement()
     
     def save(self):
+        """Save current annotation layer json file."""
         self.ann.save()
     
     def select_label_with_mouse(self, event):
@@ -1609,6 +1631,7 @@ class VideoPointAnnotator(VideoBrowser):
             self.add_annotation(event)
 
     def predict_points_with_lucas_kanade(self, labels='all', start_frame=None, mode='full'):
+        """Compute the location of labels at the current frame using Lucas-Kanade algorithm."""
         if labels == 'all':
             labels = self.ann.labels
         elif labels == 'current':
