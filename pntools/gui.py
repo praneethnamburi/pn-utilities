@@ -1391,13 +1391,14 @@ class VideoPointAnnotator(VideoBrowser):
         
         figure_handle, (self._ax_image, self._ax_trace_x) = plt.subplots(2, 1, gridspec_kw=dict(height_ratios=[3,1]), figsize=(10, 8))
         self._ax_trace_y = self._ax_trace_x.twinx()
+        self._frame_marker, = self._ax_trace_x.plot([], [], color='black', linewidth=1)
         super().__init__(vid_name, titlefunc, self._ax_image)
         self.memoryslots.hide()
         self.memoryslots.disable()
 
         # annotation layers
         self.annotations = VideoAnnotations(parent=self)
-        self.load_annotation_layers(annotation_names)        
+        self.load_annotation_layers(annotation_names)       
 
         # State variables
         self.statevariables.add('annotation_layer', self.annotations.names)
@@ -1410,6 +1411,7 @@ class VideoPointAnnotator(VideoBrowser):
         # set mouse click behavior
         self.cid.append(self.figure.canvas.mpl_connect('pick_event', self.select_label_with_mouse))
         self.cid.append(self.figure.canvas.mpl_connect('button_press_event', self.place_label_with_mouse))
+        self.cid.append(self.figure.canvas.mpl_connect('button_press_event', self.go_to_frame))
 
         plt.show(block=False)
         self.update()
@@ -1492,13 +1494,14 @@ class VideoPointAnnotator(VideoBrowser):
                 self.statevariables['annotation_label'].set_state(str(event.key))
                 if self.statevariables['number_keys'].current_state == 'place':
                     self.add_annotation(event)
+                self.update()
             elif event.key in [str(x) for x in range(10)]:
                 self.ann.add_label(str(event.key))
                 self.statevariables['annotation_label'].states = self.ann.labels
                 self.statevariables['annotation_label'].set_state(str(event.key))
                 if self.statevariables['number_keys'].current_state == 'place':
                     self.add_annotation(event)
-            self.statevariables.update_display(draw=True)
+                self.update()
     
     def update(self):
         """Update elements in the UI."""
@@ -1506,8 +1509,9 @@ class VideoPointAnnotator(VideoBrowser):
         self.ann.update_display(self._current_idx, draw=False)
         self.ann.show_one_trace(self._current_label, draw=False)
         self.statevariables.update_display(draw=False)
+        self.update_frame_marker(draw=False)
         super().update()
-        self.reset_axes()
+        plt.draw()
     
     def update_annotation_visibility(self, draw=False):
         """Update the visibility of all annotation layers, for example, when the layer is changed."""
@@ -1516,6 +1520,20 @@ class VideoPointAnnotator(VideoBrowser):
                 ann.show(draw=draw)
             else:
                 ann.hide(draw=draw)
+
+    def update_frame_marker(self, draw=False):
+        """Update the current frame location in the trace plots."""
+        def nanlim(x):
+            return [np.nanmin(x)*0.9, np.nanmax(x)*1.1]
+        trace_data_x, trace_data_y = self.ann.to_trace(self._current_label).T
+        self._frame_marker.set_data([self._current_idx]*2, nanlim(trace_data_x))
+
+        # self._ax_trace_x.set_xlim((0, n_frames))
+        if len(self.ann.data[self._current_label]) > 0:
+            self._ax_trace_x.set_ylim(nanlim(trace_data_x))
+            self._ax_trace_y.set_ylim(nanlim(trace_data_y))
+        if draw:
+            plt.draw()
 
     def _add_annotation(self, location, frame_number=None, label=None):
         """Core function for adding annotations. Allows more control."""
@@ -1527,7 +1545,8 @@ class VideoPointAnnotator(VideoBrowser):
 
     def add_annotation(self, event):
         """Add annotation at frame. If it exists, it'll get overwritten."""
-        self._add_annotation([float(event.xdata), float(event.ydata)])
+        if event.inaxes == self._ax_image:
+            self._add_annotation([float(event.xdata), float(event.ydata)])
         self.update()
     
     def remove_annotation(self, event=None):
@@ -1633,6 +1652,14 @@ class VideoPointAnnotator(VideoBrowser):
         """Place the selected label with the right mousebutton."""
         if event.inaxes == self._ax and event.button.name == 'RIGHT':
             self.add_annotation(event)
+    
+    def go_to_frame(self, event):
+        if (
+            event.inaxes in (self._ax_trace_x, self._ax_trace_y) and 
+            event.button.name == 'RIGHT'
+            ):
+            self._current_idx = int(event.xdata)
+            self.update()
 
     def predict_points_with_lucas_kanade(self, labels='all', start_frame=None, mode='full'):
         """Compute the location of labels at the current frame using Lucas-Kanade algorithm."""
@@ -2065,7 +2092,6 @@ class VideoAnnotation:
                     self.plot_handles[handle_name], = this_ax.plot(x, dummy_y, plot_type, color=color)
                     
             ax_x.set_xlim(0, self.n_frames)
-            ax_y.set_xlim(0, self.n_frames)
 
     def setup_display(self, ax_list_scatter=None, ax_list_trace=None, palette=None):
         self.setup_display_scatter(ax_list_scatter, palette)
@@ -2094,6 +2120,7 @@ class VideoAnnotation:
                 for coord_cnt, coord in enumerate(('x', 'y')):
                     handle_name = f'trace_in_ax{coord}{ax_cnt}_label{label}'
                     self.plot_handles[handle_name].set_ydata(trace[:, coord_cnt])
+        
         if draw:
             plt.draw()
     
