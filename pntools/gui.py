@@ -1550,15 +1550,24 @@ class VideoPointAnnotator(VideoBrowser):
         self._current_idx = min([x for x in self.ann.frames if x > self._current_idx], default=self._current_idx)
         self.update()
     
+    def _update_statevariable_annotation_label(self):
+        x = self.statevariables['annotation_label']
+        current_state = x.current_state
+        x.states = self.ann.labels
+        if current_state not in self.ann.labels:
+            x.set_state(0)
+        else:
+            x.set_state(current_state)
+
     def previous_annotation_layer(self):
         self.statevariables['annotation_layer'].cycle_back()
-        self.statevariables['annotation_label'].states = self.ann.labels
+        self._update_statevariable_annotation_label()
         self.update_annotation_visibility()
         self.update()
 
     def next_annotation_layer(self):
         self.statevariables['annotation_layer'].cycle()
-        self.statevariables['annotation_label'].states = self.ann.labels
+        self._update_statevariable_annotation_label()
         self.update_annotation_visibility()
         self.update()
     
