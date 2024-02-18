@@ -1388,8 +1388,10 @@ class VideoPointAnnotator(VideoBrowser):
         annotation_names: list[str] = '', 
         titlefunc: Callable = None
         ):
-        figure_handle, _ax = plt.subplots(1, 1, figsize=(10, 8)) # height_ratiors=[4,1,1]
-        super().__init__(vid_name, titlefunc, _ax)
+        
+        figure_handle, (self._ax_image, self._ax_trace_x) = plt.subplots(2, 1, gridspec_kw=dict(height_ratios=[3,1]), figsize=(10, 8))
+        self._ax_trace_y = self._ax_trace_x.twinx()
+        super().__init__(vid_name, titlefunc, self._ax_image)
         self.memoryslots.hide()
         self.memoryslots.disable()
 
@@ -1401,7 +1403,7 @@ class VideoPointAnnotator(VideoBrowser):
         self.statevariables.add('annotation_layer', self.annotations.names)
         self.statevariables.add('annotation_label', self.ann.labels)
         self.statevariables.add('number_keys', ['select', 'place'])
-        self.statevariables.show(pos='bottom left')
+        self.statevariables.show(pos='top left')
 
         self.set_key_bindings()
         
@@ -1421,7 +1423,9 @@ class VideoPointAnnotator(VideoBrowser):
                 name=annotation_name, 
                 fname=self._get_fname_annotations(annotation_name), 
                 vname=self.fname,
-                ax_list=[self._ax],
+                ax_list_scatter=[self._ax_image],
+                ax_list_trace_x=[self._ax_trace_x],
+                ax_list_trace_y=[self._ax_trace_y],
                 palette_name='Set2'
                 )
     
@@ -1497,10 +1501,10 @@ class VideoPointAnnotator(VideoBrowser):
             self.statevariables.update_display(draw=True)
     
     def update(self):
-        """Update elements in the UI. This method currently does not handle 
-        updating the visibility of annotation layers.
-        """
+        """Update elements in the UI."""
+        self.update_annotation_visibility(draw=False)
         self.ann.update_display(self._current_idx, draw=False)
+        self.ann.show_one_trace(self._current_label, draw=False)
         self.statevariables.update_display(draw=False)
         super().update()
         self.reset_axes()
@@ -1710,10 +1714,12 @@ class VideoAnnotation:
         self.data = self.load()
 
         self.palette = get_palette(kwargs.pop('palette_name', 'Set2'), n_colors=10) # seaborn Set 2
-        ax_list = kwargs.pop('ax_list', [])
-        self.plot_handles = {'ax_list': ax_list}
-        if len(self.plot_handles['ax_list']) > 0:
-            self.setup_display()
+        self.plot_handles = {
+            'ax_list_scatter': kwargs.pop('ax_list_scatter', []),
+            'ax_list_trace_x': kwargs.pop('ax_list_trace_x', []),
+            'ax_list_trace_y': kwargs.pop('ax_list_trace_y', [])
+            }
+        self.setup_display()
 
     @staticmethod
     def _parse_inp(fname_inp, vname_inp):
@@ -2009,48 +2015,127 @@ class VideoAnnotation:
         assert label in self.labels
         self.data[label].pop(frame_number, None)
 
-    def setup_display(self, ax_list=None, palette=None):
+    # display management
+    def _process_ax_list(self, ax_list, type_):
+        assert type_ in ('scatter', 'trace_x', 'trace_y')
         if ax_list is None:
-            ax_list = self.plot_handles['ax_list']
+            ax_list = self.plot_handles[f'ax_list_{type_}']
         if isinstance(ax_list, plt.Axes):
             ax_list = [ax_list]
-        if len(ax_list) == 0:
-            return
         assert all([isinstance(ax, plt.Axes) for ax in ax_list])
+        self.plot_handles[f'ax_list_{type_}'] = ax_list
+        return ax_list
 
+    def _process_palette(self, palette):
         if palette is None:
-            palette = self.palette
+            return self.palette
+        
+        if isinstance(palette, str):
+            palette = get_palette(palette, 10)
+        
+        self.palette = palette
+        return palette
+            
+    def setup_display_scatter(self, ax_list_scatter=None, palette=None):
+        ax_list_scatter = self._process_ax_list(ax_list_scatter, 'scatter')
+        palette = self._process_palette(palette)
+
+        dummy_xy = [np.nan]*len(palette) # instead of len(self.labels) to keep all 10 points, some of them can be nan
+        for ax_cnt, ax in enumerate(ax_list_scatter):
+            self.plot_handles[f'labels_in_ax{ax_cnt}'] = ax.scatter(dummy_xy, dummy_xy, color=palette, picker=5)
+
+    def setup_display_trace(self, ax_list_trace_x=None, ax_list_trace_y=None, palette=None):
+        ax_list_trace_x = self._process_ax_list(ax_list_trace_x, 'trace_x')
+        ax_list_trace_y = self._process_ax_list(ax_list_trace_y, 'trace_y')
+        palette = self._process_palette(palette)
+
+        if len(self.frames)/self.n_frames > 0.8:
+            plot_type = '-'
         else:
-            if isinstance(palette, str):
-                palette = get_palette(palette, 10)
-            self.palette = palette
+            plot_type = 'o'
+        
+        x = np.arange(self.n_frames)
+        dummy_y = np.full(self.n_frames, np.nan)
+        for ax_cnt, (ax_x, ax_y) in enumerate(zip(ax_list_trace_x, ax_list_trace_y)):
+            for label_cnt, x_color in enumerate(self.palette): # create plots for all 10 traces
+                label = str(label_cnt)
+                y_color = [1-tc for tc in x_color]
+                for coord, this_ax, color in zip(('x', 'y'), (ax_x, ax_y), (x_color, y_color)):
+                    handle_name = f'trace_in_ax{coord}{ax_cnt}_label{label}'
+                    self.plot_handles[handle_name], = this_ax.plot(x, dummy_y, plot_type, color=color)
+                    
+            ax_x.set_xlim(0, self.n_frames)
+            ax_y.set_xlim(0, self.n_frames)
 
-        self.plot_handles['ax_list'] = ax_list
-        for ax_cnt, ax in enumerate(ax_list):
-            n_pts = len(self.palette) # to keep all 10 points, some of them can be nan
-            self.plot_handles[f'labels_in_ax{ax_cnt}'] = ax.scatter([np.nan]*n_pts, [np.nan]*n_pts, color=self.palette, picker=5)
+    def setup_display(self, ax_list_scatter=None, ax_list_trace=None, palette=None):
+        self.setup_display_scatter(ax_list_scatter, palette)
+        self.setup_display_trace(ax_list_trace, palette)
+        
 
-    def update_display(self, frame_number, draw=False):
-        for ax_cnt in range(len(self.plot_handles['ax_list'])):
+    def update_display_scatter(self, frame_number, draw=False):
+        for ax_cnt in range(len(self.plot_handles['ax_list_scatter'])):
             n_pts = len(self.palette)
             scatter_offsets = np.full((n_pts, 2), np.nan)
             scatter_offsets[:len(self.labels), :] = self.get_at_frame(frame_number)
             self.plot_handles[f'labels_in_ax{ax_cnt}'].set_offsets(scatter_offsets)
         if draw:
             plt.draw()
-
+    
+    def update_display_trace(self, label=None, draw=False):
+        if label is None:
+            label_list = self.labels
+        else:
+            assert label in self.labels
+            label_list = [label]
+                
+        for ax_cnt in range(len(self.plot_handles['ax_list_trace_x'])):
+            for label in label_list:
+                trace = self.to_trace(label)
+                for coord_cnt, coord in enumerate(('x', 'y')):
+                    handle_name = f'trace_in_ax{coord}{ax_cnt}_label{label}'
+                    self.plot_handles[handle_name].set_ydata(trace[:, coord_cnt])
+        if draw:
+            plt.draw()
+    
+    def update_display(self, frame_number, label=None, draw=False):
+        self.update_display_scatter(frame_number, draw=False)
+        self.update_display_trace(label, draw=False)
+        if draw:
+            plt.draw()
+        
+    # display management - control visibility
     def _set_visibility(self, visibility: bool=True, draw=False):
         for plot_handle_name, plot_handle in self.plot_handles.items():
-            if plot_handle_name.startswith('labels_in_ax'):
+            if plot_handle_name.startswith('labels_in_ax') or plot_handle_name.startswith('trace_in_ax'):
                 plot_handle.set_visible(visibility)
         if draw:
             plt.draw()
 
     def hide(self, draw=True):
+        """Hide all elements (scatter, traces) in this annotation."""
         self._set_visibility(False, draw)
 
     def show(self, draw=True):
+        """Show all elements (scatter, traces) in this annotation."""
         self._set_visibility(True, draw)
+    
+    def _set_trace_visibility(self, label: str, visibility: bool=True, draw=False):
+        for plot_handle_name, plot_handle in self.plot_handles.items():
+            if plot_handle_name.startswith('trace_in_ax') and plot_handle_name.endswith(f'_label{label}'):
+                plot_handle.set_visible(visibility)
+        if draw:
+            plt.draw()
+    
+    def show_trace(self, label, draw=True):
+        self._set_trace_visibility(label, True, draw)
+
+    def hide_trace(self, label, draw=True):
+        self._set_trace_visibility(label, False, draw)
+
+    def show_one_trace(self, label, draw=True):
+        for this_label in self.labels:
+            self._set_trace_visibility(this_label, this_label == label, draw)
+
 
 class VideoAnnotations(AssetContainer):
     def add(self, name, fname=None, vname=None, **kwargs):
