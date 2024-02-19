@@ -1476,6 +1476,8 @@ class VideoPointAnnotator(VideoBrowser):
 
         self.add_key_binding('n', self.next_frame_with_current_label)
         self.add_key_binding('p', self.previous_frame_with_current_label)
+        
+        self.add_key_binding('c', self.copy_annotations_from_overlay)
 
         self.add_key_binding(
             'v', 
@@ -1597,6 +1599,17 @@ class VideoPointAnnotator(VideoBrowser):
             self._ax_trace_y.set_ylim(nanlim(trace_data_y))
         if draw:
             plt.draw()
+    
+    def copy_annotations_from_overlay(self):
+        """Copy annotations from the overlay layer into the current layer."""
+        ann_overlay = self.annotations[self._current_overlay]
+        frame_number = self._current_idx
+        for label in self.ann.labels:
+            if label in ann_overlay.labels:
+                location = ann_overlay.data[label].get(frame_number, None)
+                if location is not None:
+                    self.ann.add(location, label, frame_number)
+        self.update()
 
     def _add_annotation(self, location, frame_number=None, label=None):
         """Core function for adding annotations. Allows more control."""
