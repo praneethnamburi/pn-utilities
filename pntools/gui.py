@@ -1821,8 +1821,9 @@ class VideoAnnotation:
 
     @classmethod
     def from_multiple_files(cls, fname_list, vname, name, fname_merged, **kwargs):
-        from functools import reduce
-        
+        """Merge annotations from multiple files.
+        If multiple files contain an annotation label for the same frame, values from the last file will be kept.
+        """
         ann_list = [cls(fname, vname, name, **kwargs) for fname in fname_list]
         assert len({ann.video.name for ann in ann_list}) == 1
         
@@ -1831,7 +1832,10 @@ class VideoAnnotation:
         ret = cls(fname=fname_merged, vname=ann_list[-1].video.fname, name=name)
         ret.data = {label: {} for label in labels}
         for label in labels:
-            ret.data[label] = reduce(lambda x, y: {**x, **y}, [ann.data.get(label, {}) for ann in ann_list])
+            ret.data[label] = functools.reduce(
+                lambda x, y: {**x, **y}, 
+                [ann.data.get(label, {}) for ann in ann_list]
+                )
         ret.palette = ann_list[-1].palette
         
         return ret
