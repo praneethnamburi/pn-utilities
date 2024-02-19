@@ -1797,9 +1797,9 @@ class VideoAnnotation:
         
         if name is None:
             if self.fstem is None:
-                name = 'video_annotation'
+                self.name = 'video_annotation'
             else:
-                name = self.fstem
+                self.name = self.fstem
         else:
             assert isinstance(name, str)
             self.name = name
@@ -1818,6 +1818,23 @@ class VideoAnnotation:
             'ax_list_trace_y': kwargs.pop('ax_list_trace_y', [])
             }
         self.setup_display()
+
+    @classmethod
+    def from_multiple_files(cls, fname_list, vname, name, fname_merged, **kwargs):
+        from functools import reduce
+        
+        ann_list = [cls(fname, vname, name, **kwargs) for fname in fname_list]
+        assert len({ann.video.name for ann in ann_list}) == 1
+        
+        labels = sorted(list({label for ann in ann_list for label in ann.labels}))
+        
+        ret = cls(fname=fname_merged, vname=ann_list[-1].video.fname, name=name)
+        ret.data = {label: {} for label in labels}
+        for label in labels:
+            ret.data[label] = reduce(lambda x, y: {**x, **y}, [ann.data.get(label, {}) for ann in ann_list])
+        ret.palette = ann_list[-1].palette
+        
+        return ret
 
     @staticmethod
     def _parse_inp(fname_inp, vname_inp):
@@ -2148,7 +2165,7 @@ class VideoAnnotation:
         ax_list_trace_y = self._process_ax_list(ax_list_trace_y, 'trace_y')
         palette = self._process_palette(palette)
 
-        if len(self.frames)/self.n_frames > 0.8:
+        if self.n_frames > 0 and len(self.frames)/self.n_frames > 0.8:
             plot_type = '-'
         else:
             plot_type = 'o'
