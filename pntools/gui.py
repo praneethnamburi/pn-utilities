@@ -1413,6 +1413,7 @@ class VideoPointAnnotator(VideoBrowser):
 
         # State variables
         self.statevariables.add('annotation_layer', self.annotations.names)
+        self.statevariables.add('annotation_overlay', [None] + self.annotations.names)
         self.statevariables.add('annotation_label', self.ann.labels)
         self.statevariables.add('number_keys', ['select', 'place'])
         self.statevariables.show(pos='top left')
@@ -1462,8 +1463,10 @@ class VideoPointAnnotator(VideoBrowser):
         self.add_key_binding('g', self.increment)
         self.add_key_binding('d', self.decrement_if_unannotated)
 
-        self.add_key_binding("[", self.previous_annotation_layer)
-        self.add_key_binding("]", self.next_annotation_layer)
+        self.add_key_binding("-", self.previous_annotation_layer)
+        self.add_key_binding("=", self.next_annotation_layer)
+        self.add_key_binding("[", self.previous_annotation_overlay)
+        self.add_key_binding("]", self.next_annotation_overlay)
         self.add_key_binding(';', self.previous_annotation_label)
         self.add_key_binding("'", self.next_annotation_label)
         self.add_key_binding(",", self.previous_frame_with_any_label)
@@ -1521,6 +1524,11 @@ class VideoPointAnnotator(VideoBrowser):
         """Return current annotation layer"""
         return self.statevariables['annotation_layer'].current_state
     
+    @property
+    def _current_overlay(self) -> Union[str, None]:
+        """Return current annotation overlay layer"""
+        return self.statevariables['annotation_overlay'].current_state
+    
     def _get_fname_annotations(self, annotation_name, suffix='.json'):
         """Construct the filename corresponding to an  annotation layer named annotation_name."""
         return os.path.join(
@@ -1552,8 +1560,8 @@ class VideoPointAnnotator(VideoBrowser):
     def update(self):
         """Update elements in the UI."""
         self.update_annotation_visibility(draw=False)
-        self.ann.update_display(self._current_idx, draw=False)
-        self.ann.show_one_trace(self._current_label, draw=False)
+        # self.ann.update_display(self._current_idx, draw=False)
+        # self.ann.show_one_trace(self._current_label, draw=False)
         self.statevariables.update_display(draw=False)
         self.update_frame_marker(draw=False)
         super().update()
@@ -1562,8 +1570,17 @@ class VideoPointAnnotator(VideoBrowser):
     def update_annotation_visibility(self, draw=False):
         """Update the visibility of all annotation layers, for example, when the layer is changed."""
         for ann in self.annotations:
-            if ann.name == self.ann.name:
-                ann.show(draw=draw)
+            if ann.name  == self._current_layer:
+                ann.set_alpha(1, draw=False)
+                ann.show(draw=False)
+                ann.show_one_trace(self._current_label, draw=False)
+                ann.update_display(self._current_idx, draw=draw)
+            elif ann.name == self._current_overlay:
+                if ann.name != self._current_layer:
+                    ann.set_alpha(0.4, draw=False)
+                    ann.show(draw=False)
+                    ann.show_one_trace(self._current_label, draw=False)
+                    ann.update_display(self._current_idx, draw=draw)
             else:
                 ann.hide(draw=draw)
 
@@ -1642,14 +1659,22 @@ class VideoPointAnnotator(VideoBrowser):
         """Go to the previous annotation layer."""
         self.statevariables['annotation_layer'].cycle_back()
         self._update_statevariable_annotation_label()
-        self.update_annotation_visibility()
         self.update()
 
     def next_annotation_layer(self):
         """Go to the next annotation layer"""
         self.statevariables['annotation_layer'].cycle()
         self._update_statevariable_annotation_label()
-        self.update_annotation_visibility()
+        self.update()
+    
+    def previous_annotation_overlay(self):
+        """Go to the previous annotation overlay layer."""
+        self.statevariables['annotation_overlay'].cycle_back()
+        self.update()
+    
+    def next_annotation_overlay(self):
+        """Go to the next annotation overlay layer."""
+        self.statevariables['annotation_overlay'].cycle()
         self.update()
     
     def previous_annotation_label(self):
@@ -2181,10 +2206,23 @@ class VideoAnnotation:
             plt.draw()
         
     # display management - control visibility
+    @property
+    def _trace_handles(self) -> dict:
+        """Dictionary of handle_name - handle for trace handles."""
+        return {name:handle for name, handle in self.plot_handles.items() if name.startswith('trace_in_ax')}
+    
+    @property
+    def _label_handles(self) -> dict:
+        """Dictionary of handle_name - handle for label handles (image overlay)."""
+        return {name:handle for name, handle in self.plot_handles.items() if name.startswith('labels_in_ax')}
+    
+    @property
+    def _trace_or_label_handles(self) -> dict:
+        return {**self._trace_handles, **self._label_handles}
+                
     def _set_visibility(self, visibility: bool=True, draw=False):
-        for plot_handle_name, plot_handle in self.plot_handles.items():
-            if plot_handle_name.startswith('labels_in_ax') or plot_handle_name.startswith('trace_in_ax'):
-                plot_handle.set_visible(visibility)
+        for plot_handle in self._trace_or_label_handles.values():
+            plot_handle.set_visible(visibility)
         if draw:
             plt.draw()
 
@@ -2197,8 +2235,8 @@ class VideoAnnotation:
         self._set_visibility(True, draw)
     
     def _set_trace_visibility(self, label: str, visibility: bool=True, draw=False):
-        for plot_handle_name, plot_handle in self.plot_handles.items():
-            if plot_handle_name.startswith('trace_in_ax') and plot_handle_name.endswith(f'_label{label}'):
+        for plot_handle_name, plot_handle in self._trace_handles.items():
+            if plot_handle_name.endswith(f'_label{label}'):
                 plot_handle.set_visible(visibility)
         if draw:
             plt.draw()
@@ -2212,6 +2250,19 @@ class VideoAnnotation:
     def show_one_trace(self, label, draw=True):
         for this_label in self.labels:
             self._set_trace_visibility(this_label, this_label == label, draw)
+
+    def set_alpha(self, alpha=0.4, label=None, draw=True):
+        """Set the transparency level of all (or one) the traces and labels in this annotation.
+
+        Args:
+            alpha (float, optional): alpha value between 0 and 1. Defaults to 0.4.
+            label (_type_, optional): Defaults to all labels.
+            draw (bool, optional): Update display if True. Defaults to True.
+        """ 
+        for handle in self._trace_or_label_handles.values():
+            handle.set_alpha(alpha)
+        if draw:
+            plt.draw()
 
 
 class VideoAnnotations(AssetContainer):
