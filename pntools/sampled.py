@@ -327,6 +327,13 @@ class Interval:
         this_end = (self.end, other.end)[np.argmax((self.end.time, other.end.time))]
         return Interval(this_start, this_end, sr=self.sr, iter_rate=self.iter_rate)
 
+    def intersection(self, other):
+        assert self.sr == other.sr
+        if (other.start.time > self.end.time) | (self.start.time > other.end.time):
+            return ()
+        this_start = (self.start, other.start)[np.argmax((self.start.time, other.start.time))]
+        this_end = (self.end, other.end)[np.argmin((self.end.time, other.end.time))]
+        return  Interval(this_start, this_end, sr=self.sr, iter_rate=self.iter_rate)
 
 class Data: # Signal processing
     def __init__(self, sig, sr, axis=None, history=None, t0=0., meta=None):
