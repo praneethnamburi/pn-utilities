@@ -1384,15 +1384,24 @@ class VideoPointAnnotator(VideoBrowser):
 
     If you're doing one label at a time, then pick the frames for the first label arbitrarily.
     For the second label onwards, 
+
+    Args:
+        vid_name (Path): Path to the video.
+        annotation_names (Union[list[str], Mapping[str, Path]], optional): 
+            list[str] - Name(s) of the annotation layer(s). The file path(s) are deduced from the name(s).
+            Mapping[str, Path] - A dictionary mapping of annotation layer names to the annotation file paths.
+            Defaults to '' with one layer of annotations.
+        titlefunc (Callable, optional): A function used to set the title of the image axis. 
+            Defaults to a title function specified in :py:class:`VideoBrowser`.
     """
     def __init__(self, 
-        vid_name: str, 
-        annotation_names: list[str] = '', 
+        vid_name: Path, 
+        annotation_names: Union[list[str], Mapping[str, Path]] = '', 
         titlefunc: Callable = None
         ):
-        
-        figure_handle, (self._ax_image, self._ax_trace_x) = plt.subplots(2, 1, gridspec_kw=dict(height_ratios=[3,1]), figsize=(10, 8))
-        self._ax_trace_y = self._ax_trace_x.twinx()
+
+        figure_handle, (self._ax_image, self._ax_trace_x, self._ax_trace_y) = plt.subplots(3, 1, gridspec_kw=dict(height_ratios=[3,1,1]), figsize=(10, 8))
+        self._ax_trace_x.sharex(self._ax_trace_y)
         self._frame_marker, = self._ax_trace_x.plot([], [], color='black', linewidth=1)
         super().__init__(vid_name, titlefunc, self._ax_image)
         self.memoryslots.hide()
@@ -1404,6 +1413,7 @@ class VideoPointAnnotator(VideoBrowser):
 
         # State variables
         self.statevariables.add('annotation_layer', self.annotations.names)
+        self.statevariables.add('annotation_overlay', [None] + self.annotations.names)
         self.statevariables.add('annotation_label', self.ann.labels)
         self.statevariables.add('number_keys', ['select', 'place'])
         self.statevariables.show(pos='top left')
@@ -1420,20 +1430,27 @@ class VideoPointAnnotator(VideoBrowser):
         if self.__class__.__name__ == 'VideoPointAnnotator':
             plt.show(block=False)
             self.update()
+            plt.setp(self._ax_trace_x.get_xticklabels(), visible=False)
+            self.figure.tight_layout()
+            plt.draw()
             
-    def load_annotation_layers(self, annotation_names: list[str]):
+    def load_annotation_layers(self, annotation_names: Union[list[str], Mapping[str, Path]]):
         """Load data from annotation files if they exist, otherwise initialize annotation layers."""
         if isinstance(annotation_names, str):
             annotation_names = [annotation_names]
-        for annotation_name in annotation_names:
+        if isinstance(annotation_names, dict):
+            ann_name_fname = annotation_names
+        else:
+            ann_name_fname = {name: self._get_fname_annotations(name) for name in annotation_names}
+        for name, fname in ann_name_fname.items():
             self.annotations.add(
-                name=annotation_name, 
-                fname=self._get_fname_annotations(annotation_name), 
-                vname=self.fname,
-                ax_list_scatter=[self._ax_image],
-                ax_list_trace_x=[self._ax_trace_x],
-                ax_list_trace_y=[self._ax_trace_y],
-                palette_name='Set2'
+                name            = name, 
+                fname           = fname, 
+                vname           = self.fname,
+                ax_list_scatter = [self._ax_image],
+                ax_list_trace_x = [self._ax_trace_x],
+                ax_list_trace_y = [self._ax_trace_y],
+                palette_name    = 'Set2'
                 )
     
     def set_key_bindings(self):
@@ -1446,17 +1463,21 @@ class VideoPointAnnotator(VideoBrowser):
         self.add_key_binding('g', self.increment)
         self.add_key_binding('d', self.decrement_if_unannotated)
 
-        self.add_key_binding("[", self.previous_annotation_layer)
-        self.add_key_binding("]", self.next_annotation_layer)
+        self.add_key_binding("-", self.previous_annotation_layer)
+        self.add_key_binding("=", self.next_annotation_layer)
+        self.add_key_binding("[", self.previous_annotation_overlay)
+        self.add_key_binding("]", self.next_annotation_overlay)
         self.add_key_binding(';', self.previous_annotation_label)
         self.add_key_binding("'", self.next_annotation_label)
         self.add_key_binding(",", self.previous_frame_with_any_label)
         self.add_key_binding(".", self.next_frame_with_any_label)
         
-        self.add_key_binding("=", self.cycle_number_keys_behavior)
+        self.add_key_binding("`", self.cycle_number_keys_behavior)
 
         self.add_key_binding('n', self.next_frame_with_current_label)
         self.add_key_binding('p', self.previous_frame_with_current_label)
+        
+        self.add_key_binding('c', self.copy_annotations_from_overlay)
 
         self.add_key_binding(
             'v', 
@@ -1482,9 +1503,9 @@ class VideoPointAnnotator(VideoBrowser):
             color        = 'gray',
             pick_action  = 'append',
             ax_list      = [self._ax_trace_x],
-            add_key      = 'x',
-            remove_key   = 'alt+x',
-            save_key     = 'ctrl+x',
+            add_key      = 'z',
+            remove_key   = 'alt+z',
+            save_key     = 'ctrl+z',
             display_type = 'fill',
             win_remove   = (10, 10),
             show         = True
@@ -1504,6 +1525,11 @@ class VideoPointAnnotator(VideoBrowser):
     def _current_layer(self) -> str:
         """Return current annotation layer"""
         return self.statevariables['annotation_layer'].current_state
+    
+    @property
+    def _current_overlay(self) -> Union[str, None]:
+        """Return current annotation overlay layer"""
+        return self.statevariables['annotation_overlay'].current_state
     
     def _get_fname_annotations(self, annotation_name, suffix='.json'):
         """Construct the filename corresponding to an  annotation layer named annotation_name."""
@@ -1536,8 +1562,8 @@ class VideoPointAnnotator(VideoBrowser):
     def update(self):
         """Update elements in the UI."""
         self.update_annotation_visibility(draw=False)
-        self.ann.update_display(self._current_idx, draw=False)
-        self.ann.show_one_trace(self._current_label, draw=False)
+        # self.ann.update_display(self._current_idx, draw=False)
+        # self.ann.show_one_trace(self._current_label, draw=False)
         self.statevariables.update_display(draw=False)
         self.update_frame_marker(draw=False)
         super().update()
@@ -1546,8 +1572,17 @@ class VideoPointAnnotator(VideoBrowser):
     def update_annotation_visibility(self, draw=False):
         """Update the visibility of all annotation layers, for example, when the layer is changed."""
         for ann in self.annotations:
-            if ann.name == self.ann.name:
-                ann.show(draw=draw)
+            if ann.name  == self._current_layer:
+                ann.set_alpha(1, draw=False)
+                ann.show(draw=False)
+                ann.show_one_trace(self._current_label, draw=False)
+                ann.update_display(self._current_idx, draw=draw)
+            elif ann.name == self._current_overlay:
+                if ann.name != self._current_layer:
+                    ann.set_alpha(0.4, draw=False)
+                    ann.show(draw=False)
+                    ann.show_one_trace(self._current_label, draw=False)
+                    ann.update_display(self._current_idx, draw=draw)
             else:
                 ann.hide(draw=draw)
 
@@ -1555,7 +1590,7 @@ class VideoPointAnnotator(VideoBrowser):
         """Update the current frame location in the trace plots."""
         def nanlim(x):
             return [np.nanmin(x)*0.9, np.nanmax(x)*1.1]
-        trace_data_x, trace_data_y = self.ann.to_trace(self._current_label).T
+        trace_data_x, trace_data_y = np.hstack([ann.to_trace(self._current_label).T for ann in self.annotations._list])
         self._frame_marker.set_data([self._current_idx]*2, nanlim(trace_data_x))
 
         # self._ax_trace_x.set_xlim((0, n_frames))
@@ -1564,6 +1599,17 @@ class VideoPointAnnotator(VideoBrowser):
             self._ax_trace_y.set_ylim(nanlim(trace_data_y))
         if draw:
             plt.draw()
+    
+    def copy_annotations_from_overlay(self):
+        """Copy annotations from the overlay layer into the current layer."""
+        ann_overlay = self.annotations[self._current_overlay]
+        frame_number = self._current_idx
+        for label in self.ann.labels:
+            if label in ann_overlay.labels:
+                location = ann_overlay.data[label].get(frame_number, None)
+                if location is not None:
+                    self.ann.add(location, label, frame_number)
+        self.update()
 
     def _add_annotation(self, location, frame_number=None, label=None):
         """Core function for adding annotations. Allows more control."""
@@ -1626,14 +1672,22 @@ class VideoPointAnnotator(VideoBrowser):
         """Go to the previous annotation layer."""
         self.statevariables['annotation_layer'].cycle_back()
         self._update_statevariable_annotation_label()
-        self.update_annotation_visibility()
         self.update()
 
     def next_annotation_layer(self):
         """Go to the next annotation layer"""
         self.statevariables['annotation_layer'].cycle()
         self._update_statevariable_annotation_label()
-        self.update_annotation_visibility()
+        self.update()
+    
+    def previous_annotation_overlay(self):
+        """Go to the previous annotation overlay layer."""
+        self.statevariables['annotation_overlay'].cycle_back()
+        self.update()
+    
+    def next_annotation_overlay(self):
+        """Go to the next annotation overlay layer."""
+        self.statevariables['annotation_overlay'].cycle()
         self.update()
     
     def previous_annotation_label(self):
@@ -1756,9 +1810,9 @@ class VideoAnnotation:
         
         if name is None:
             if self.fstem is None:
-                name = 'video_annotation'
+                self.name = 'video_annotation'
             else:
-                name = self.fstem
+                self.name = self.fstem
         else:
             assert isinstance(name, str)
             self.name = name
@@ -1777,6 +1831,27 @@ class VideoAnnotation:
             'ax_list_trace_y': kwargs.pop('ax_list_trace_y', [])
             }
         self.setup_display()
+
+    @classmethod
+    def from_multiple_files(cls, fname_list, vname, name, fname_merged, **kwargs):
+        """Merge annotations from multiple files.
+        If multiple files contain an annotation label for the same frame, values from the last file will be kept.
+        """
+        ann_list = [cls(fname, vname, name, **kwargs) for fname in fname_list]
+        assert len({ann.video.name for ann in ann_list}) == 1
+        
+        labels = sorted(list({label for ann in ann_list for label in ann.labels}))
+        
+        ret = cls(fname=fname_merged, vname=ann_list[-1].video.fname, name=name)
+        ret.data = {label: {} for label in labels}
+        for label in labels:
+            ret.data[label] = functools.reduce(
+                lambda x, y: {**x, **y}, 
+                [ann.data.get(label, {}) for ann in ann_list]
+                )
+        ret.palette = ann_list[-1].palette
+        
+        return ret
 
     @staticmethod
     def _parse_inp(fname_inp, vname_inp):
@@ -1816,6 +1891,7 @@ class VideoAnnotation:
                 if v:
                     ret[k] = {int(frame_num):loc for frame_num, loc in v.items()}
             return ret
+    
     def _load_dlc(self, dlc_fname, **kwargs):
         if isinstance(dlc_fname, (str, Path)):
             assert os.path.exists(dlc_fname)
@@ -2106,7 +2182,7 @@ class VideoAnnotation:
         ax_list_trace_y = self._process_ax_list(ax_list_trace_y, 'trace_y')
         palette = self._process_palette(palette)
 
-        if len(self.frames)/self.n_frames > 0.8:
+        if self.n_frames > 0 and len(self.frames)/self.n_frames > 0.8:
             plot_type = '-'
         else:
             plot_type = 'o'
@@ -2116,7 +2192,10 @@ class VideoAnnotation:
         for ax_cnt, (ax_x, ax_y) in enumerate(zip(ax_list_trace_x, ax_list_trace_y)):
             for label_cnt, x_color in enumerate(self.palette): # create plots for all 10 traces
                 label = str(label_cnt)
-                y_color = [1-tc for tc in x_color]
+                if ax_x.bbox.bounds == ax_y.bbox.bounds: # if they are in the same axis
+                    y_color = [1-tc for tc in x_color]
+                else:
+                    y_color = x_color
                 for coord, this_ax, color in zip(('x', 'y'), (ax_x, ax_y), (x_color, y_color)):
                     handle_name = f'trace_in_ax{coord}{ax_cnt}_label{label}'
                     self.plot_handles[handle_name], = this_ax.plot(x, dummy_y, plot_type, color=color)
@@ -2161,10 +2240,23 @@ class VideoAnnotation:
             plt.draw()
         
     # display management - control visibility
+    @property
+    def _trace_handles(self) -> dict:
+        """Dictionary of handle_name - handle for trace handles."""
+        return {name:handle for name, handle in self.plot_handles.items() if name.startswith('trace_in_ax')}
+    
+    @property
+    def _label_handles(self) -> dict:
+        """Dictionary of handle_name - handle for label handles (image overlay)."""
+        return {name:handle for name, handle in self.plot_handles.items() if name.startswith('labels_in_ax')}
+    
+    @property
+    def _trace_or_label_handles(self) -> dict:
+        return {**self._trace_handles, **self._label_handles}
+                
     def _set_visibility(self, visibility: bool=True, draw=False):
-        for plot_handle_name, plot_handle in self.plot_handles.items():
-            if plot_handle_name.startswith('labels_in_ax') or plot_handle_name.startswith('trace_in_ax'):
-                plot_handle.set_visible(visibility)
+        for plot_handle in self._trace_or_label_handles.values():
+            plot_handle.set_visible(visibility)
         if draw:
             plt.draw()
 
@@ -2177,8 +2269,8 @@ class VideoAnnotation:
         self._set_visibility(True, draw)
     
     def _set_trace_visibility(self, label: str, visibility: bool=True, draw=False):
-        for plot_handle_name, plot_handle in self.plot_handles.items():
-            if plot_handle_name.startswith('trace_in_ax') and plot_handle_name.endswith(f'_label{label}'):
+        for plot_handle_name, plot_handle in self._trace_handles.items():
+            if plot_handle_name.endswith(f'_label{label}'):
                 plot_handle.set_visible(visibility)
         if draw:
             plt.draw()
@@ -2192,6 +2284,19 @@ class VideoAnnotation:
     def show_one_trace(self, label, draw=True):
         for this_label in self.labels:
             self._set_trace_visibility(this_label, this_label == label, draw)
+
+    def set_alpha(self, alpha=0.4, label=None, draw=True):
+        """Set the transparency level of all (or one) the traces and labels in this annotation.
+
+        Args:
+            alpha (float, optional): alpha value between 0 and 1. Defaults to 0.4.
+            label (_type_, optional): Defaults to all labels.
+            draw (bool, optional): Update display if True. Defaults to True.
+        """ 
+        for handle in self._trace_or_label_handles.values():
+            handle.set_alpha(alpha)
+        if draw:
+            plt.draw()
 
 
 class VideoAnnotations(AssetContainer):
