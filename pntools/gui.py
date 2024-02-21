@@ -2009,6 +2009,9 @@ class VideoAnnotation:
         if fname is None:
             assert self.fname is not None
             fname = self.fname
+        # at the moment, saving is only supported for json files through this method
+        if Path(fname).suffix != '.json':
+            raise ValueError('Supply a json file name.')
         self.sort_data()
         with open(fname, 'w') as f:
             json.dump(self.data, f, indent=4)
