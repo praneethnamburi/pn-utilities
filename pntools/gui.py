@@ -1479,6 +1479,7 @@ class VideoPointAnnotator(VideoBrowser):
         
         self.add_key_binding('c', self.copy_annotations_from_overlay)
 
+        self.add_key_binding('a', self.interpolate_with_lk)
         self.add_key_binding(
             'v', 
             (lambda s: s.predict_points_with_lucas_kanade(labels='current')).__get__(self), 
@@ -1774,6 +1775,23 @@ class VideoPointAnnotator(VideoBrowser):
         self.update()
         return tracked_loc
 
+    def interpolate_with_lk(self):
+        video = self.data
+        if self._current_overlay is None:
+            return
+        
+        start_frame, end_frame = list(self.events['interp_with_lk']._data.values())[-1].get_times()[-1]
+        ann_overlay = self.annotations[self._current_overlay]
+        start_points = [ann_overlay.data[label][start_frame] for label in ann_overlay.labels]
+        end_points = [ann_overlay.data[label][end_frame] for label in ann_overlay.labels]
+        rstc_path = lucas_kanade_rstc(video, start_frame, end_frame, start_points, end_points)
+        for frame_count, frame_number in enumerate(range(start_frame, end_frame+1)):
+            for label_count, label in enumerate(ann_overlay.labels):
+                location = list(rstc_path[frame_count, label_count, :])
+                self._add_annotation(location, frame_number, label)
+        self.update()
+            
+
 
 class VideoAnnotation:
     """Manage one point annotation layer in a video.
@@ -1991,9 +2009,14 @@ class VideoAnnotation:
         if fname is None:
             assert self.fname is not None
             fname = self.fname
+        # at the moment, saving is only supported for json files through this method
+        if Path(fname).suffix != '.json':
+            raise ValueError('Supply a json file name.')
         self.sort_data()
         with open(fname, 'w') as f:
             json.dump(self.data, f, indent=4)
+        labels_annotations = {label:len(self.data[label]) for label in self.labels}
+        print(f'Saved {fname} with labels-n_annotations \n {labels_annotations}')
     
     def sort_data(self):
         """Sort annotations by the frame numbers."""
