@@ -1174,6 +1174,7 @@ if not BLENDER_MODE:
         scatter_alpha = kwargs.get('scatter_alpha', 1)
         bar_width = kwargs.get('bar_width', 0.05)
         errorbar_width = kwargs.get('errorbar_width', bar_width*0.4)
+        paired = kwargs.get('paired', False)
         if xcat is None:
             x = np.asarray(x)
             y = np.asarray(y)
@@ -1188,8 +1189,16 @@ if not BLENDER_MODE:
             plt_show = True
         else:
             plt_show = False
-        
+
         ax.scatter(x, y, s=80, color=scatter_color, facecolors='none', alpha=scatter_alpha)
+        if isinstance(bar_color, list) and paired:
+            group_len = len(y) // len(bar_color)
+            x_group = x.reshape(group_len, -1, order='F')
+            y_group = y.reshape(group_len, -1, order='F')
+
+            for x_g, y_g in zip(x_group, y_group):
+                ax.plot(x_g, y_g, 'k')
+
         if yl is None:
             yl = ax.get_ylim()
         else:
@@ -1235,6 +1244,7 @@ if not BLENDER_MODE:
         alternative = kwargs.pop('alternative', 'two-sided')
         equal_var = kwargs.pop('equal_var', True)
         permutations = kwargs.pop('permutations', None)
+        paired = kwargs.get('paired', False)
 
         x = []
         y = []
@@ -1265,7 +1275,10 @@ if not BLENDER_MODE:
         ax.set_xticks(xcat, [x+'\n'+n_str(col_data) for x, col_data in zip(col_names, col_data)])
 
         if len(col_names) == 2 and kwargs.get('show_stats', True):
-            _, p_val = sstats.ttest_ind(col_data[0], col_data[1], alternative=alternative, equal_var=equal_var, permutations=permutations)
+            if paired:
+                _, p_val = sstats.ttest_rel(col_data[0], col_data[1], alternative=alternative)
+            else:
+                _, p_val = sstats.ttest_ind(col_data[0], col_data[1], alternative=alternative, equal_var=equal_var, permutations=permutations)
             ax.text(0.5, 0.94, p_str(p_val), transform=ax.transAxes, ha='center', va='bottom')
             yl = ax.get_ylim()
             yc = yl[0] + np.diff(yl)*0.93
