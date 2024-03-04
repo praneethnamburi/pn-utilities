@@ -12,6 +12,6 @@ dependencies:
   - pandas
   - pip
   - scipy
+  - pyfilemanager
   - pip:
       - decord
-      - pyfilemanager
