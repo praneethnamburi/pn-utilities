@@ -78,15 +78,5 @@ Communication (with external processes).
 
 
 ## Usage
-Create a conda environment with numpy, scipy, multiprocess and blinker:
-
-    conda create -n pntools-test python=3.9.2 numpy scipy blinker  
-    conda activate pntools-test  
-    conda install -c conda-forge multiprocess  
-
-For using the video module:
-    
-    conda install matplotlib
-    pip install decord
-    pip install ffmpeg-python
-    python -m pip install git+https://github.com/pytube/pytube
+Create a conda environment using the supplied `environment.yml` file.
+If you're unable to import opencv with `import cv2`, then try `pip install opencv-contrib-python`.
