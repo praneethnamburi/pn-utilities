@@ -1410,7 +1410,12 @@ class VideoPointAnnotator(VideoBrowser):
 
         # annotation layers
         self.annotations = VideoAnnotations(parent=self)
-        self.load_annotation_layers(annotation_names)       
+        self.load_annotation_layers(annotation_names)
+
+        # frames of interest
+        self.frames_of_interest = []
+        self._plot_frames_of_interest_x, = self._ax_trace_x.plot([], [], color='gray', linewidth=1, alpha=0.5)
+        self._plot_frames_of_interest_y, = self._ax_trace_y.plot([], [], color='gray', linewidth=1, alpha=0.5)
 
         # State variables
         self.statevariables.add('annotation_layer', self.annotations.names)
@@ -1472,13 +1477,17 @@ class VideoPointAnnotator(VideoBrowser):
         self.add_key_binding("'", self.next_annotation_label)
         self.add_key_binding(",", self.previous_frame_with_any_label)
         self.add_key_binding(".", self.next_frame_with_any_label)
+        self.add_key_binding("alt+,", self.previous_frame_of_interest)
+        self.add_key_binding("alt+.", self.next_frame_of_interest)
         
         self.add_key_binding("`", self.cycle_number_keys_behavior)
 
         self.add_key_binding('n', self.next_frame_with_current_label)
         self.add_key_binding('p', self.previous_frame_with_current_label)
         
+        self.add_key_binding('m', self.toggle_frame_of_interest)
         self.add_key_binding('c', self.copy_annotations_from_overlay)
+        self.add_key_binding('alt+c', self.copy_frames_of_interest_from_buffer)
 
         self.add_key_binding('a', self.interpolate_with_lk, 'Interpolate current point with LK')
         self.add_key_binding('q', 
@@ -1508,8 +1517,8 @@ class VideoPointAnnotator(VideoBrowser):
             pick_action  = 'overwrite',
             ax_list      = [self._ax_trace_x],
             add_key      = 'z',
-            remove_key   = 'alt+z',
-            save_key     = 'ctrl+z',
+            remove_key   = None,
+            save_key     = None,
             display_type = 'fill',
             win_remove   = (10, 10),
             show         = True
@@ -1594,14 +1603,27 @@ class VideoPointAnnotator(VideoBrowser):
         """Update the current frame location in the trace plots."""
         def nanlim(x):
             return [np.nanmin(x)*0.9, np.nanmax(x)*1.1]
-        trace_data_x, trace_data_y = np.hstack([ann.to_trace(self._current_label).T for ann in self.annotations._list])
-        self._frame_marker_x.set_data([self._current_idx]*2, nanlim(trace_data_x))
-        self._frame_marker_y.set_data([self._current_idx]*2, nanlim(trace_data_y))
 
+        def nanlim_small(x, scale=0.6):
+            nmin = np.nanmin(x)*0.9
+            nmax = np.nanmax(x)*1.1
+            m = (nmin + nmax)/2
+            return [(nmin-m)*scale+m, (nmax-m)*scale+m]
+
+        trace_data_x, trace_data_y = np.hstack([ann.to_trace(self._current_label).T for ann in self.annotations._list])
+
+        xl, yl = nanlim(trace_data_x), nanlim(trace_data_y)
+        xls, yls = nanlim_small(trace_data_x), nanlim_small(trace_data_y)
+
+        self._frame_marker_x.set_data([self._current_idx]*2, xls)
+        self._frame_marker_y.set_data([self._current_idx]*2, yls)
+
+        self._plot_frames_of_interest_x.set_data(*pn.ticks_from_times(self.frames_of_interest, xl))
+        self._plot_frames_of_interest_y.set_data(*pn.ticks_from_times(self.frames_of_interest, yl))
         # self._ax_trace_x.set_xlim((0, n_frames))
         if len(self.ann.data[self._current_label]) > 0:
-            self._ax_trace_x.set_ylim(nanlim(trace_data_x))
-            self._ax_trace_y.set_ylim(nanlim(trace_data_y))
+            self._ax_trace_x.set_ylim(xl)
+            self._ax_trace_y.set_ylim(yl)
         if draw:
             plt.draw()
     
@@ -1614,6 +1636,23 @@ class VideoPointAnnotator(VideoBrowser):
                 location = ann_overlay.data[label].get(frame_number, None)
                 if location is not None:
                     self.ann.add(location, label, frame_number)
+        self.update()
+    
+    def copy_frames_of_interest_from_buffer(self):
+        """copy annotations at frames of interest from buffer into the current layer.
+        If there is no buffer, then copy from the overlay layer.
+        """
+        if 'buffer' in self.annotations.names:
+            source_ann = self.annotations['buffer']
+        else:
+            source_ann = self.annotations[self._current_overlay]
+        
+        for frame_number in self.frames_of_interest:
+            for label in self.ann.labels:
+                if label in source_ann.labels:
+                    location = source_ann.data[label].get(frame_number, None)
+                    if location is not None:
+                        self.ann.add(location, label, frame_number)
         self.update()
 
     def _add_annotation(self, location, frame_number=None, label=None):
@@ -1658,6 +1697,15 @@ class VideoPointAnnotator(VideoBrowser):
     def next_frame_with_any_label(self, event=None):
         """Go to the next frame with any label in the current annotation layer."""
         self._current_idx = min([x for x in self.ann.frames if x > self._current_idx], default=self._current_idx)
+        self.update()
+
+    def previous_frame_of_interest(self, event=None):
+        """Go to the previous frame of interest."""
+        self._current_idx = max([x for x in self.frames_of_interest if x < self._current_idx], default=self._current_idx)
+        self.update()
+    
+    def next_frame_of_interest(self, event=None):
+        self._current_idx = min([x for x in self.frames_of_interest if x > self._current_idx], default=self._current_idx)
         self.update()
     
     def _update_statevariable_annotation_label(self):
@@ -1748,6 +1796,17 @@ class VideoPointAnnotator(VideoBrowser):
             event.button.name == 'RIGHT'
             ):
             self._current_idx = int(event.xdata)
+            self.update()
+    
+    def toggle_frame_of_interest(self, event):
+        """Mark/unmark the current frame as a frame of interest"""
+        if event.inaxes in (self._ax_trace_x, self._ax_trace_y):
+            frame_number = self._current_idx
+            if frame_number in self.frames_of_interest:
+                self.frames_of_interest.remove(frame_number)
+            else:
+                self.frames_of_interest.append(frame_number)
+            self.frames_of_interest.sort()
             self.update()
 
     def predict_points_with_lucas_kanade(self, labels='all', start_frame=None, mode='full'):
