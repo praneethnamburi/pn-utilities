@@ -786,7 +786,7 @@ class Data: # Signal processing
         if self._sig.ndim == 1:
             return self
         assert self._sig.ndim == 2 # magnitude does not make sense for a 1D signal (in that case, use np.linalg.norm directly)
-        return Data(np.linalg.norm(self._sig, axis=(self.axis+1)%2), self.sr, history=self._history+[('magnitude', 'None')])
+        return Data(np.linalg.norm(self._sig, axis=(self.axis+1)%2), self.sr, history=self._history+[('magnitude', 'None')], t0=self._t0, meta=self.meta)
 
     def apply(self, func, *args, **kwargs):
         """apply a function func along the time axis"""
