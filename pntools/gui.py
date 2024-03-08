@@ -1402,7 +1402,8 @@ class VideoPointAnnotator(VideoBrowser):
 
         figure_handle, (self._ax_image, self._ax_trace_x, self._ax_trace_y) = plt.subplots(3, 1, gridspec_kw=dict(height_ratios=[3,1,1]), figsize=(10, 8))
         self._ax_trace_x.sharex(self._ax_trace_y)
-        self._frame_marker, = self._ax_trace_x.plot([], [], color='black', linewidth=1)
+        self._frame_marker_x, = self._ax_trace_x.plot([], [], color='black', linewidth=1)
+        self._frame_marker_y, = self._ax_trace_y.plot([], [], color='black', linewidth=1)
         super().__init__(vid_name, titlefunc, self._ax_image)
         self.memoryslots.hide()
         self.memoryslots.disable()
@@ -1479,15 +1480,17 @@ class VideoPointAnnotator(VideoBrowser):
         
         self.add_key_binding('c', self.copy_annotations_from_overlay)
 
-        self.add_key_binding('a', self.interpolate_with_lk)
-        self.add_key_binding(
-            'v', 
+        self.add_key_binding('a', self.interpolate_with_lk, 'Interpolate current point with LK')
+        self.add_key_binding('q', 
+            (lambda s: s.interpolate_with_lk(all_labels=True)).__get__(self), 
+            'Interpolate all points with LK'
+            )
+        self.add_key_binding('v', 
             (lambda s: s.predict_points_with_lucas_kanade(labels='current')).__get__(self), 
             'Predict current point with lucas-kanade'
             )
         
-        self.add_key_binding(
-            'b', 
+        self.add_key_binding('b', 
             (lambda s: s.predict_points_with_lucas_kanade(labels='all')).__get__(self), 
             'Predict all points with lucas-kanade'
             )
@@ -1502,7 +1505,7 @@ class VideoPointAnnotator(VideoBrowser):
             data_id_func = (lambda s: (s._current_layer, s._current_label)).__get__(self),
             data_func    = round,
             color        = 'gray',
-            pick_action  = 'append',
+            pick_action  = 'overwrite',
             ax_list      = [self._ax_trace_x],
             add_key      = 'z',
             remove_key   = 'alt+z',
@@ -1592,7 +1595,8 @@ class VideoPointAnnotator(VideoBrowser):
         def nanlim(x):
             return [np.nanmin(x)*0.9, np.nanmax(x)*1.1]
         trace_data_x, trace_data_y = np.hstack([ann.to_trace(self._current_label).T for ann in self.annotations._list])
-        self._frame_marker.set_data([self._current_idx]*2, nanlim(trace_data_x))
+        self._frame_marker_x.set_data([self._current_idx]*2, nanlim(trace_data_x))
+        self._frame_marker_y.set_data([self._current_idx]*2, nanlim(trace_data_y))
 
         # self._ax_trace_x.set_xlim((0, n_frames))
         if len(self.ann.data[self._current_label]) > 0:
@@ -1775,18 +1779,23 @@ class VideoPointAnnotator(VideoBrowser):
         self.update()
         return tracked_loc
 
-    def interpolate_with_lk(self):
+    def interpolate_with_lk(self, all_labels=False):
         video = self.data
         if self._current_overlay is None:
             return
         
+        if all_labels:
+            label_list = self.annotations[self._current_overlay].labels
+        else:
+            label_list = [self._current_label]
+        
         start_frame, end_frame = list(self.events['interp_with_lk']._data.values())[-1].get_times()[-1]
         ann_overlay = self.annotations[self._current_overlay]
-        start_points = [ann_overlay.data[label][start_frame] for label in ann_overlay.labels]
-        end_points = [ann_overlay.data[label][end_frame] for label in ann_overlay.labels]
+        start_points = [ann_overlay.data[label][start_frame] for label in label_list]
+        end_points = [ann_overlay.data[label][end_frame] for label in label_list]
         rstc_path = lucas_kanade_rstc(video, start_frame, end_frame, start_points, end_points)
         for frame_count, frame_number in enumerate(range(start_frame, end_frame+1)):
-            for label_count, label in enumerate(ann_overlay.labels):
+            for label_count, label in enumerate(label_list):
                 location = list(rstc_path[frame_count, label_count, :])
                 self._add_annotation(location, frame_number, label)
         self.update()
