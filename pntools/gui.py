@@ -1400,7 +1400,7 @@ class VideoPointAnnotator(VideoBrowser):
         vid_name: Path, 
         annotation_names: Union[list[str], Mapping[str, Path]] = '', 
         titlefunc: Callable = None,
-        image_process_func: Callable = lambda im: im
+        image_process_func: Callable = lambda im: im,
         height_ratios: tuple = [10,1,1] # depends on your screen size
         ):
 
