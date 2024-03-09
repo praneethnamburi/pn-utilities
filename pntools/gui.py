@@ -1180,7 +1180,7 @@ class VideoBrowser(GenericBrowser):
 
         If figure_handle is an axis handle, the video will be plotted in that axis.
     """
-    def __init__(self, vid_name, titlefunc=None, figure_or_ax_handle=None):
+    def __init__(self, vid_name, titlefunc=None, figure_or_ax_handle=None, image_process_func=lambda im:im):
         from decord import VideoReader
         assert isinstance(figure_or_ax_handle, (plt.Axes, plt.Figure, type(None)))
         if isinstance(figure_or_ax_handle, plt.Axes):
@@ -1212,6 +1212,8 @@ class VideoBrowser(GenericBrowser):
         if titlefunc is None:
             self.titlefunc = lambda s: f'Frame {s._current_idx}/{len(s)}, {s.fps} fps, {str(timedelta(seconds=s._current_idx/s.fps))}'
         
+        self.image_process_func = image_process_func
+        
         self.set_default_keybindings()
         self.add_key_binding('e', self.extract_clip)
         self.memoryslots.show(pos='bottom left')
@@ -1221,7 +1223,7 @@ class VideoBrowser(GenericBrowser):
             self.update()
 
     def update(self):
-        self._im.set_data(self.data[self._current_idx].asnumpy())
+        self._im.set_data(self.image_process_func(self.data[self._current_idx].asnumpy()))
         self._ax.set_title(self.titlefunc(self))
         super().update() # updates memory slots
         plt.draw()
@@ -1397,14 +1399,16 @@ class VideoPointAnnotator(VideoBrowser):
     def __init__(self, 
         vid_name: Path, 
         annotation_names: Union[list[str], Mapping[str, Path]] = '', 
-        titlefunc: Callable = None
+        titlefunc: Callable = None,
+        image_process_func: Callable = lambda im: im
+        height_ratios: tuple = [10,1,1] # depends on your screen size
         ):
 
-        figure_handle, (self._ax_image, self._ax_trace_x, self._ax_trace_y) = plt.subplots(3, 1, gridspec_kw=dict(height_ratios=[3,1,1]), figsize=(10, 8))
+        figure_handle, (self._ax_image, self._ax_trace_x, self._ax_trace_y) = plt.subplots(3, 1, gridspec_kw=dict(height_ratios=list(height_ratios)), figsize=(10, 8))
         self._ax_trace_x.sharex(self._ax_trace_y)
         self._frame_marker_x, = self._ax_trace_x.plot([], [], color='black', linewidth=1)
         self._frame_marker_y, = self._ax_trace_y.plot([], [], color='black', linewidth=1)
-        super().__init__(vid_name, titlefunc, self._ax_image)
+        super().__init__(vid_name, titlefunc, self._ax_image, image_process_func)
         self.memoryslots.hide()
         self.memoryslots.disable()
 
