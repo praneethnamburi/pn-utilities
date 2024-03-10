@@ -1492,6 +1492,7 @@ class VideoPointAnnotator(VideoBrowser):
 
         self.add_key_binding('n', self.next_frame_with_current_label)
         self.add_key_binding('p', self.previous_frame_with_current_label)
+        self.add_key_binding("b", self.previous_frame_with_current_label)
         
         self.add_key_binding('m', self.toggle_frame_of_interest)
         self.add_key_binding('c', self.copy_annotations_from_overlay)
@@ -1514,7 +1515,7 @@ class VideoPointAnnotator(VideoBrowser):
             (lambda s: s.interpolate_with_lk(all_labels=True)).__get__(self), 
             'Interpolate all points with LK'
             )
-        self.add_key_binding('b', 
+        self.add_key_binding('alt+b', 
             (lambda s: s.predict_points_with_lucas_kanade(labels='current')).__get__(self), 
             'Predict current point with lucas-kanade'
             )
