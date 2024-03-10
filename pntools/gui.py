@@ -1415,6 +1415,8 @@ class VideoPointAnnotator(VideoBrowser):
         # annotation layers
         self.annotations = VideoAnnotations(parent=self)
         self.load_annotation_layers(annotation_names)
+        if "buffer" in self.annotations.names:
+            self.annotations["buffer"].set_plot_type("line")
 
         # frames of interest
         self.frames_of_interest = []
@@ -1448,6 +1450,8 @@ class VideoPointAnnotator(VideoBrowser):
         """Load data from annotation files if they exist, otherwise initialize annotation layers."""
         if isinstance(annotation_names, str):
             annotation_names = [annotation_names]
+        if "buffer" not in annotation_names:
+            annotation_names.append("buffer")
         if isinstance(annotation_names, dict):
             ann_name_fname = annotation_names
         else:
@@ -1493,17 +1497,28 @@ class VideoPointAnnotator(VideoBrowser):
         self.add_key_binding('c', self.copy_annotations_from_overlay)
         self.add_key_binding('alt+c', self.copy_frames_of_interest_from_buffer)
 
+        self.add_key_binding("v", 
+            (lambda s: s.check_labels_with_lk(mode="minimal")).__get__(self),
+            "Check labels with LK - minimal mode"
+            )
+        self.add_key_binding("alt+v", 
+            (lambda s: s.check_labels_with_lk(mode="current")).__get__(self),
+            "Check labels with LK - current label"
+            )
+        self.add_key_binding("ctrl+alt+v", 
+            (lambda s: s.check_labels_with_lk(mode="all")).__get__(self),
+            "Check labels with LK - all labels"
+            )
         self.add_key_binding('a', self.interpolate_with_lk, 'Interpolate current point with LK')
-        self.add_key_binding('q', 
+        self.add_key_binding('ctrl+a', 
             (lambda s: s.interpolate_with_lk(all_labels=True)).__get__(self), 
             'Interpolate all points with LK'
             )
-        self.add_key_binding('v', 
+        self.add_key_binding('b', 
             (lambda s: s.predict_points_with_lucas_kanade(labels='current')).__get__(self), 
             'Predict current point with lucas-kanade'
             )
-        
-        self.add_key_binding('b', 
+        self.add_key_binding('ctrl+b', 
             (lambda s: s.predict_points_with_lucas_kanade(labels='all')).__get__(self), 
             'Predict all points with lucas-kanade'
             )
@@ -1861,6 +1876,52 @@ class VideoPointAnnotator(VideoBrowser):
             for label_count, label in enumerate(label_list):
                 location = list(rstc_path[frame_count, label_count, :])
                 self._add_annotation(location, frame_number, label)
+        self.update()
+    
+    def check_labels_with_lk(self, mode="minimal"):
+        """Interpolate between all labeled frames. 
+        This only makes sense for sparse-labeled annotations.
+        Use this when doing first-time annotations (as opposed to refinement).
+        
+        I am testing if refining the start labels using this strategy, 
+        and augmenting the training data will improve deeplabcut tracking!
+
+        Args:
+            mode (str, optional): 
+                "all"     - LK-interpolation for all labels across all labeled frames
+                "current" - LK-interpolation for current label across all labeled frames
+                "minimal" - LK-interpolation for current label between labeled frames near the current frame
+                Defaults to "minimal".
+        """
+        assert mode in ("current", "all", "minimal")
+
+        source_ann = self.ann
+        if "buffer" in self.annotations.names:
+            target_ann = self.annotations["buffer"]
+
+        video = source_ann.video
+        if mode == "all":
+            label_list = source_ann.labels
+        else:
+            label_list = [self._current_label]
+        
+        rstc_paths = {label: np.full((source_ann.n_frames, 2), np.nan) for label in label_list}
+        for label in label_list:
+            frames = pn.List(sorted(list(source_ann[label].keys())))
+            if mode == "minimal":
+                c = self._current_idx
+                n1 = c if c in frames else frames.next(c)
+                n2 = frames.next(n1)
+                p1 = frames.previous(c)
+                p2 = frames.previous(p1)
+                frames = sorted(list(set([p2, p1, n1, n2])))
+            for start_frame, end_frame in zip(frames, frames[1:]):
+                start_points = [source_ann[label][start_frame]]
+                end_points = [source_ann[label][end_frame]]
+                rstc_path = lucas_kanade_rstc(video, start_frame, end_frame, start_points, end_points)
+                for frame_count, frame_num in enumerate(range(start_frame, end_frame+1)):
+                    target_ann.data[label][frame_num] = list(rstc_path[frame_count, 0, :])
+                rstc_paths[label][start_frame:end_frame+1, :] = np.squeeze(rstc_path)
         self.update()
             
 
@@ -2390,6 +2451,18 @@ class VideoAnnotation:
         """ 
         for handle in self._trace_or_label_handles.values():
             handle.set_alpha(alpha)
+        if draw:
+            plt.draw()
+    
+    def set_plot_type(self, type_="line", draw=True):
+        assert type_ in ("line", "dot")
+        for trace_handle in self._trace_handles.values():
+            if type_ == "line":
+                trace_handle.set_linestyle("-")
+                trace_handle.set_marker(None)
+            else:
+                trace_handle.set_linestyle("None")
+                trace_handle.set_marker("o")
         if draw:
             plt.draw()
 

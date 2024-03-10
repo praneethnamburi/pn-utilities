@@ -1502,6 +1502,16 @@ def test_apply_to_files(fname):
     print(fname)
 
 
+class List(list):
+    def next(self, val):
+        """Next element in the list closest to val."""
+        return min([x for x in self if x > val], default=max(self))
+    
+    def previous(self, val):
+        """Previous element in the list closest to val."""
+        return max([x for x in self if x < val], default=min(self))
+
+
 """
 Implimentation of Density-Based Clustering Validation "DBCV"
 
