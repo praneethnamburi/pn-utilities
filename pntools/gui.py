@@ -1401,7 +1401,7 @@ class VideoPointAnnotator(VideoBrowser):
         annotation_names: Union[list[str], Mapping[str, Path]] = '', 
         titlefunc: Callable = None,
         image_process_func: Callable = lambda im: im,
-        height_ratios: tuple = [10,1,1] # depends on your screen size
+        height_ratios: tuple = (10,1,1) # depends on your screen size
         ):
 
         figure_handle, (self._ax_image, self._ax_trace_x, self._ax_trace_y) = plt.subplots(3, 1, gridspec_kw=dict(height_ratios=list(height_ratios)), figsize=(10, 8))
@@ -2460,7 +2460,7 @@ class VideoAnnotation:
         for trace_handle in self._trace_handles.values():
             if type_ == "line":
                 trace_handle.set_linestyle("-")
-                trace_handle.set_marker(None)
+                trace_handle.set_marker("None")
             else:
                 trace_handle.set_linestyle("None")
                 trace_handle.set_marker("o")
