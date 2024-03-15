@@ -2467,6 +2467,11 @@ class VideoAnnotation:
         if draw:
             plt.draw()
 
+    def clip_labels(self, start_frame: int, end_frame: int):
+        """Remove annotations outside the clip range. Clip range includes start and end frame."""
+        for label in self.labels:
+            self.data[label] = {k:v for k,v in self.data[label].items() if  start_frame <= k <= end_frame}
+
 
 class VideoAnnotations(AssetContainer):
     def add(self, name, fname=None, vname=None, **kwargs):
