@@ -1466,6 +1466,20 @@ class VideoPointAnnotator(VideoBrowser):
                 ax_list_trace_y = [self._ax_trace_y],
                 palette_name    = 'Set2'
                 )
+        # same set of non-empty labels in all the loaded annotations
+        all_labels = []
+        for ann in self.annotations._list:
+            all_labels += [label for label, label_data in ann.data.items() if label_data]
+        all_labels = sorted(list(set(all_labels)))
+        for ann in self.annotations._list:
+            for label in all_labels:
+                if label not in ann.labels:
+                    ann.data[label] = {}
+            for label in ann.labels:
+                if label not in all_labels:
+                    assert not ann.data[label]
+                    del ann.data[label]
+            ann.sort_labels()
     
     def set_key_bindings(self):
         """Set the keyboard actions."""
@@ -1585,9 +1599,12 @@ class VideoPointAnnotator(VideoBrowser):
                     self.add_annotation(event)
                 self.update()
             elif event.key in [str(x) for x in range(10)]:
-                self.ann.add_label(str(event.key))
+                label = str(event.key)
+                for ann in self.annotations._list: # add new label to all annotations
+                    if label not in ann.labels:
+                        ann.add_label(label)
                 self.statevariables['annotation_label'].states = self.ann.labels
-                self.statevariables['annotation_label'].set_state(str(event.key))
+                self.statevariables['annotation_label'].set_state(label)
                 if self.statevariables['number_keys'].current_state == 'place':
                     self.add_annotation(event)
                 self.update()
@@ -1801,7 +1818,7 @@ class VideoPointAnnotator(VideoBrowser):
     def select_label_with_mouse(self, event):
         """Select a label by clicking on it with the left mousebutton."""
         if event.mouseevent.button.name == 'LEFT' and len(event.ind == 1):
-            self.statevariables['annotation_label'].set_state(int(event.ind[0]))
+            self.statevariables['annotation_label'].set_state(str(event.ind[0]))
             print(f'Picked {self._current_label} with index {self.statevariables["annotation_label"].current_state} at frame {self._current_idx}')
             self.update()
     
@@ -2152,6 +2169,10 @@ class VideoAnnotation:
         labels_annotations = {label:len(self.data[label]) for label in self.labels}
         print(f'Saved {fname} with labels-n_annotations \n {labels_annotations}')
     
+    def sort_labels(self):
+        """Sort labels in the data dictionary."""
+        self.data = dict(sorted(self.data.items()))
+
     def sort_data(self):
         """Sort annotations by the frame numbers."""
         self.data = {label:dict(sorted(self.data[label].items())) for label in self.labels}
@@ -2293,6 +2314,7 @@ class VideoAnnotation:
             self.palette[len(self.labels)] = tuple(color)
         
         self.data[label] = {}
+        self.sort_labels()
         
         print(f'Created new label {label}')
         
@@ -2368,7 +2390,7 @@ class VideoAnnotation:
         for ax_cnt in range(len(self.plot_handles['ax_list_scatter'])):
             n_pts = len(self.palette)
             scatter_offsets = np.full((n_pts, 2), np.nan)
-            scatter_offsets[:len(self.labels), :] = self.get_at_frame(frame_number)
+            scatter_offsets[[int(label) for label in self.labels], :] = self.get_at_frame(frame_number)
             self.plot_handles[f'labels_in_ax{ax_cnt}'].set_offsets(scatter_offsets)
         if draw:
             plt.draw()
