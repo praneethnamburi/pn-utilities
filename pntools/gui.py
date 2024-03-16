@@ -1471,6 +1471,8 @@ class VideoPointAnnotator(VideoBrowser):
         for ann in self.annotations._list:
             all_labels += [label for label, label_data in ann.data.items() if label_data]
         all_labels = sorted(list(set(all_labels)))
+        if not all_labels: # when starting without any annotations, initialize a full set of empty annotations
+            all_labels = [str(x) for x in range(10)]
         for ann in self.annotations._list:
             for label in all_labels:
                 if label not in ann.labels:
@@ -1885,7 +1887,7 @@ class VideoPointAnnotator(VideoBrowser):
         else:
             label_list = [self._current_label]
         
-        start_frame, end_frame = list(self.events['interp_with_lk']._data.values())[-1].get_times()[-1]
+        start_frame, end_frame = self.events['interp_with_lk']._data[(self._current_layer, self._current_label)].get_times()[-1]
         ann_overlay = self.annotations[self._current_overlay]
         start_points = [ann_overlay.data[label][start_frame] for label in label_list]
         end_points = [ann_overlay.data[label][end_frame] for label in label_list]
