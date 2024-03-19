@@ -1512,8 +1512,9 @@ class VideoPointAnnotator(VideoBrowser):
         
         self.add_key_binding('m', self.toggle_frame_of_interest)
         self.add_key_binding('c', self.copy_current_annotation_from_overlay)
-        self.add_key_binding('ctrl+alt+c', self.copy_annotations_from_overlay)
+        # self.add_key_binding('ctrl+alt+c', self.copy_annotations_from_overlay)
         self.add_key_binding('alt+c', self.copy_frames_of_interest_from_buffer)
+        self.add_key_binding('ctrl+alt+c', self.copy_frames_in_interval_from_overlay)
 
         self.add_key_binding("v", 
             (lambda s: s.check_labels_with_lk(mode="minimal")).__get__(self),
@@ -1540,6 +1541,8 @@ class VideoPointAnnotator(VideoBrowser):
             (lambda s: s.predict_points_with_lucas_kanade(labels='all')).__get__(self), 
             'Predict all points with lucas-kanade'
             )
+        
+        self.add_key_binding('alt+q', self.keep_overlapping_continuous_frames)
     
     def add_events(self):
         """Add an event to specify time intervals for interpolating with lucas-kanade."""
@@ -1661,9 +1664,9 @@ class VideoPointAnnotator(VideoBrowser):
         self._plot_frames_of_interest_x.set_data(*pn.ticks_from_times(self.frames_of_interest, xl))
         self._plot_frames_of_interest_y.set_data(*pn.ticks_from_times(self.frames_of_interest, yl))
         # self._ax_trace_x.set_xlim((0, n_frames))
-        if len(self.ann.data[self._current_label]) > 0:
-            self._ax_trace_x.set_ylim(xl)
-            self._ax_trace_y.set_ylim(yl)
+        # if len(self.ann.data[self._current_label]) > 0:
+        self._ax_trace_x.set_ylim(xl)
+        self._ax_trace_y.set_ylim(yl)
         if draw:
             plt.draw()
     
@@ -1704,6 +1707,18 @@ class VideoPointAnnotator(VideoBrowser):
                     location = source_ann.data[label].get(frame_number, None)
                     if location is not None:
                         self.ann.add(location, label, frame_number)
+        self.update()
+    
+    def copy_frames_in_interval_from_overlay(self):
+        """For the current label only."""
+        start_frame, end_frame = self.get_selected_interval()
+        ann_overlay = self.annotations[self._current_overlay]
+        label = self._current_label
+        if label in ann_overlay.labels:
+            for frame_number in range(start_frame, end_frame+1):
+                location = ann_overlay.data[label].get(frame_number, None)
+                if location is not None:
+                    self.ann.add(location, label, frame_number)
         self.update()
 
     def _add_annotation(self, location, frame_number=None, label=None):
@@ -1859,6 +1874,10 @@ class VideoPointAnnotator(VideoBrowser):
                 self.frames_of_interest.append(frame_number)
             self.frames_of_interest.sort()
             self.update()
+    
+    def keep_overlapping_continuous_frames(self):
+        self.ann.keep_overlapping_continuous_frames()
+        self.update()
 
     def predict_points_with_lucas_kanade(self, labels='all', start_frame=None, mode='full'):
         """Compute the location of labels at the current frame using Lucas-Kanade algorithm."""
@@ -1889,6 +1908,10 @@ class VideoPointAnnotator(VideoBrowser):
         self.update()
         return tracked_loc
 
+    def get_selected_interval(self):
+        start_frame, end_frame = self.events['interp_with_lk']._data[(self._current_layer, self._current_label)].get_times()[-1]
+        return start_frame, end_frame
+    
     def interpolate_with_lk(self, all_labels=False):
         video = self.data
         if self._current_overlay is None:
@@ -1899,7 +1922,7 @@ class VideoPointAnnotator(VideoBrowser):
         else:
             label_list = [self._current_label]
         
-        start_frame, end_frame = self.events['interp_with_lk']._data[(self._current_layer, self._current_label)].get_times()[-1]
+        start_frame, end_frame = self.get_selected_interval()
         ann_overlay = self.annotations[self._current_overlay]
         start_points = [ann_overlay.data[label][start_frame] for label in label_list]
         end_points = [ann_overlay.data[label][end_frame] for label in label_list]
@@ -2506,7 +2529,15 @@ class VideoAnnotation:
     def clip_labels(self, start_frame: int, end_frame: int):
         """Remove annotations outside the clip range. Clip range includes start and end frame."""
         for label in self.labels:
-            self.data[label] = {k:v for k,v in self.data[label].items() if  start_frame <= k <= end_frame}
+            self.data[label] = {k:v for k,v in self.data[label].items() if start_frame <= k <= end_frame}
+    
+    def keep_overlapping_continuous_frames(self):
+        """Keep data from consecutive frames that have all labels."""
+        x = self.frames_overlapping
+        frames_to_keep = sorted(set([item for a, b in zip(x, x[1:]) if (b-a)==1 for item in (a,b)]))
+        for label in self.labels:
+            self.data[label] = {k:v for k,v in self.data[label].items() if k in frames_to_keep}
+
 
 
 class VideoAnnotations(AssetContainer):
