@@ -1511,7 +1511,8 @@ class VideoPointAnnotator(VideoBrowser):
         self.add_key_binding("b", self.previous_frame_with_current_label)
         
         self.add_key_binding('m', self.toggle_frame_of_interest)
-        self.add_key_binding('c', self.copy_annotations_from_overlay)
+        self.add_key_binding('c', self.copy_current_annotation_from_overlay)
+        self.add_key_binding('ctrl+alt+c', self.copy_annotations_from_overlay)
         self.add_key_binding('alt+c', self.copy_frames_of_interest_from_buffer)
 
         self.add_key_binding("v", 
@@ -1675,6 +1676,17 @@ class VideoPointAnnotator(VideoBrowser):
                 location = ann_overlay.data[label].get(frame_number, None)
                 if location is not None:
                     self.ann.add(location, label, frame_number)
+        self.update()
+    
+    def copy_current_annotation_from_overlay(self):
+        """Copy annotations from the overlay layer into the current layer."""
+        ann_overlay = self.annotations[self._current_overlay]
+        frame_number = self._current_idx
+        label = self._current_label
+        if label in ann_overlay.labels:
+            location = ann_overlay.data[label].get(frame_number, None)
+            if location is not None:
+                self.ann.add(location, label, frame_number)
         self.update()
     
     def copy_frames_of_interest_from_buffer(self):
