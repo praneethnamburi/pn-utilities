@@ -24,6 +24,7 @@ from pathlib import Path
 from typing import Union, Mapping, Callable
 
 import cv2 as cv
+from tqdm import tqdm
 from decord import VideoReader, cpu
 import matplotlib as mpl
 import numpy as np
@@ -1978,7 +1979,24 @@ class VideoPointAnnotator(VideoBrowser):
                     target_ann.data[label][frame_num] = list(rstc_path[frame_count, 0, :])
                 rstc_paths[label][start_frame:end_frame+1, :] = np.squeeze(rstc_path)
         self.update()
-            
+    
+    def moving_average_with_lk(self, window_size=0.5):
+        """Apply moving average filter with lucas-kanade and put it in the buffer."""
+        source_ann = self.annotations[self._current_overlay]
+        target_ann = self.annotations["buffer"]
+        video = source_ann.video
+        label_list = source_ann.labels
+        n_window_frames = round(window_size*source_ann.video.get_avg_fps())
+        frame_list = list(range(source_ann.n_frames))
+
+        rstc_paths = np.full((n_window_frames, source_ann.n_frames, len(label_list), 2), np.nan)
+        for cnt, (start_frame, end_frame) in tqdm(enumerate(zip(frame_list, frame_list[n_window_frames-1:]))):
+            start_points = [source_ann.data[label][start_frame] for label in label_list]
+            end_points = [source_ann.data[label][end_frame] for label in label_list]
+            rstc_path = lucas_kanade_rstc(video, start_frame, end_frame, start_points, end_points)
+            rstc_paths[cnt%n_window_frames, start_frame:end_frame+1, :, :] = rstc_path
+        return rstc_paths
+
 
 
 class VideoAnnotation:
@@ -2018,7 +2036,7 @@ class VideoAnnotation:
             if self.fstem is None:
                 self.name = 'video_annotation'
             else:
-                self.name = self.fstem
+                self.name = self.fstem.split("_annotations_")[-1]
         else:
             assert isinstance(name, str)
             self.name = name
@@ -2068,7 +2086,13 @@ class VideoAnnotation:
                 vname = fname_inp
                 fname = os.path.join(Path(fname_inp).parent, Path(fname_inp).stem + '_annotations.json')
             else:
-                fname, vname = fname_inp, vname_inp # do nothing, just for code readability
+                fname = fname_inp
+                # Try to find the video in the same folder
+                vname_potential = os.path.join(Path(fname_inp).parent, Path(fname_inp).stem.removesuffix("_annotations").split("_annotations_")[0] + ".mp4")
+                if os.path.exists(vname_potential):
+                    vname = vname_potential
+                else:
+                    vname = vname_inp
         elif fname_inp is None and vname_inp is not None:
             assert video.is_video(vname_inp)
             vname = vname_inp
@@ -2537,7 +2561,29 @@ class VideoAnnotation:
         frames_to_keep = sorted(set([item for a, b in zip(x, x[1:]) if (b-a)==1 for item in (a,b)]))
         for label in self.labels:
             self.data[label] = {k:v for k,v in self.data[label].items() if k in frames_to_keep}
+    
+    def get_area(self, labels: list | str, lowpass: float=None) -> sampled.Data | np.ndarray:
+        """Get the area in pixel squared."""
+        def PolyArea(x,y):
+            return 0.5*np.abs(np.dot(x,np.roll(y,1))-np.dot(y,np.roll(x,1)))
+        
+        if isinstance(labels, str):
+            labels = list(labels) # e.g. '023' -> ['0', '2', '3']
 
+        for label in labels:
+            assert label in self.labels
+
+        if lowpass is None:
+            traces = self.to_traces()
+        else:
+            traces = {label:signal.lowpass(lowpass)() for label, signal in self.to_signals().items()}
+
+        trace_mat = np.asarray([traces[label] for label in labels])
+        area_vals = np.array([PolyArea(trace_mat[:, xi, 0], trace_mat[:, xi, 1]) for xi in range(self.n_frames)])
+
+        if self.video is None: # return np.array
+            return area_vals
+        return sampled.Data(area_vals, sr=self.video.get_avg_fps())
 
 
 class VideoAnnotations(AssetContainer):
