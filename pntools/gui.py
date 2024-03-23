@@ -2091,6 +2091,7 @@ class VideoAnnotation:
                 vname_potential = os.path.join(Path(fname_inp).parent, Path(fname_inp).stem.removesuffix("_annotations").split("_annotations_")[0] + ".mp4")
                 if os.path.exists(vname_potential):
                     vname = vname_potential
+                    print(f"Associating video {vname} with the annotation!")
                 else:
                     vname = vname_inp
         elif fname_inp is None and vname_inp is not None:
