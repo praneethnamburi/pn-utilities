@@ -2226,8 +2226,14 @@ class VideoAnnotation:
         if Path(fname).suffix != '.json':
             raise ValueError('Supply a json file name.')
         self.sort_data()
+        # cast data due to json dump issues
+        data = {
+            label: {
+                int(frame): [float(x) for x in position] for frame, position in label_data.items()
+                } for label, label_data in self.data.items()
+            }
         with open(fname, 'w') as f:
-            json.dump(self.data, f, indent=4)
+            json.dump(data, f, indent=4)
         labels_annotations = {label:len(self.data[label]) for label in self.labels}
         print(f'Saved {fname} with labels-n_annotations \n {labels_annotations}')
     
