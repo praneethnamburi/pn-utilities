@@ -1447,12 +1447,15 @@ class VideoPointAnnotator(VideoBrowser):
             self.figure.tight_layout()
             plt.draw()
             
-    def load_annotation_layers(self, annotation_names: Union[list[str], Mapping[str, Path]]):
+    def load_annotation_layers(self, annotation_names: Union[list[str], dict[str, Path]]):
         """Load data from annotation files if they exist, otherwise initialize annotation layers."""
         if isinstance(annotation_names, str):
             annotation_names = [annotation_names]
         if "buffer" not in annotation_names:
-            annotation_names.append("buffer")
+            if isinstance(annotation_names, list):
+                annotation_names.append("buffer")
+            else:
+                annotation_names["buffer"] = self._get_fname_annotations("buffer")
         if isinstance(annotation_names, dict):
             ann_name_fname = annotation_names
         else:
@@ -1504,6 +1507,9 @@ class VideoPointAnnotator(VideoBrowser):
         self.add_key_binding(".", self.next_frame_with_any_label)
         self.add_key_binding("alt+,", self.previous_frame_of_interest)
         self.add_key_binding("alt+.", self.next_frame_of_interest)
+
+        self.add_key_binding("j", (lambda s: s.pan(direction='left')).__get__(self), description='pan left')
+        self.add_key_binding("k", (lambda s: s.pan(direction='right')).__get__(self), description='pan right')
         
         self.add_key_binding("`", self.cycle_number_keys_behavior)
 
@@ -1529,11 +1535,19 @@ class VideoPointAnnotator(VideoBrowser):
             (lambda s: s.check_labels_with_lk(mode="all")).__get__(self),
             "Check labels with LK - all labels"
             )
+        
         self.add_key_binding('a', self.interpolate_with_lk, 'Interpolate current point with LK')
         self.add_key_binding('ctrl+a', 
             (lambda s: s.interpolate_with_lk(all_labels=True)).__get__(self), 
             'Interpolate all points with LK'
             )
+        
+        self.add_key_binding("alt+a", self.remove_labels_in_interval, "Clear current label in interval")
+        self.add_key_binding("ctrl+alt+a",
+            (lambda s: s.remove_labels_in_interval(all_labels=True)).__get__(self), 
+            "Clear all labels in interval"
+            )
+
         self.add_key_binding('alt+b', 
             (lambda s: s.predict_points_with_lucas_kanade(labels='current')).__get__(self), 
             'Predict current point with lucas-kanade'
@@ -1912,6 +1926,23 @@ class VideoPointAnnotator(VideoBrowser):
     def get_selected_interval(self):
         start_frame, end_frame = self.events['interp_with_lk']._data[(self._current_layer, self._current_label)].get_times()[-1]
         return start_frame, end_frame
+    
+    def remove_labels_in_interval(self, all_labels=False):
+        video = self.data
+        if self._current_overlay is None:
+            return
+        
+        if all_labels:
+            label_list = self.annotations[self._current_overlay].labels
+        else:
+            label_list = [self._current_label]
+
+        start_frame, end_frame = self.get_selected_interval()
+        ann_overlay = self.annotations[self._current_overlay]
+        for frame_count, frame_number in enumerate(range(start_frame, end_frame+1)):
+            for label in label_list:
+                self.ann.remove(label, frame_number)
+        self.update()
     
     def interpolate_with_lk(self, all_labels=False):
         video = self.data
