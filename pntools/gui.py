@@ -2597,6 +2597,9 @@ class VideoAnnotation:
         """Keep data from consecutive frames that have all labels."""
         x = self.frames_overlapping
         frames_to_keep = sorted(set([item for a, b in zip(x, x[1:]) if (b-a)==1 for item in (a,b)]))
+        if len(frames_to_keep) == 0:
+            print("You're trying to remove all frames! Saving you from yourself by aborting.")
+            return
         for label in self.labels:
             self.data[label] = {k:v for k,v in self.data[label].items() if k in frames_to_keep}
     
