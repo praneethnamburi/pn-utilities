@@ -1680,8 +1680,9 @@ class VideoPointAnnotator(VideoBrowser):
         self._plot_frames_of_interest_y.set_data(*pn.ticks_from_times(self.frames_of_interest, yl))
         # self._ax_trace_x.set_xlim((0, n_frames))
         # if len(self.ann.data[self._current_label]) > 0:
-        self._ax_trace_x.set_ylim(xl)
-        self._ax_trace_y.set_ylim(yl)
+        if not np.any(np.isnan(xl)):
+            self._ax_trace_x.set_ylim(xl)
+            self._ax_trace_y.set_ylim(yl)
         if draw:
             plt.draw()
     
@@ -3242,3 +3243,7 @@ def get_palette(palette_name='Set2', n_colors=10):
                 (0.99, 0.55, 0.38)
             ]}
         return palettes[palette_name][:n_colors]
+
+if __name__ == "__main__":
+    vname = r"\\192.168.1.5\Studies\2201000537 - Operator\data_opr02\009_01\ml_models\dlc\opr02_s009_t007_u005.mp4"
+    v = VideoPointAnnotator(vname, 'test1234')
