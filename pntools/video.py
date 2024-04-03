@@ -137,8 +137,12 @@ def make_montage2x2(vid_files, vid_output=None, aud_file=None, overwrite=False):
 
 def separate_audio(vid_file:str):
     aud_file = os.path.join(Path(vid_file).parent, Path(vid_file).stem + '.aac')
-    ret = subprocess.getoutput(f'ffmpeg -i "{vid_file}" -vn -acodec copy "{aud_file}"')
-    return ret
+    if not os.path.exists(aud_file):
+        print(f"Separating audio from {aud_file}")
+        ret = subprocess.getoutput(f'ffmpeg -i "{vid_file}" -vn -acodec copy "{aud_file}"')
+        return ret
+    print(f"{aud_file} already exists. Skipping!")
+        
 
 def reencode(vid_files, out_files=None, preset='plain', overwrite=False):
     """
