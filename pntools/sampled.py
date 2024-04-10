@@ -796,7 +796,7 @@ class Data: # Signal processing
         except TypeError:
             kwargs.pop('axis')
             proc_sig = func(self._sig, *args, **kwargs)
-        return self._clone(proc_sig, ('apply', {'func': func, 'args': args, 'kwargs': kwargs}))
+        return self._clone(proc_sig, ('apply', {'func': str(func), 'args': args, 'kwargs': kwargs}))
     
     def apply_along_signals(self, func, *args, **kwargs):
         """apply a function func along the signal axis"""
@@ -806,7 +806,7 @@ class Data: # Signal processing
         except TypeError:
             kwargs.pop('axis')
             proc_sig = func(self._sig, *args, **kwargs)
-        return self._clone(proc_sig, ('apply_along_signals', {'func': func, 'args': args, 'kwargs': kwargs}))
+        return self._clone(proc_sig, ('apply_along_signals', {'func': str(func), 'args': args, 'kwargs': kwargs}))
     
     def apply_to_each_signal(self, func, *args, **kwargs):
         """Apply a function to each signal (if self is a collection of signals) separately, and put it back together"""
@@ -814,7 +814,7 @@ class Data: # Signal processing
         proc_sig = np.vstack([func(s._sig, *args, **kwargs) for s in self.split_to_1d()])
         if self.axis == 0:
             proc_sig = proc_sig.T
-        return self._clone(proc_sig, ('apply_to_each_signal', {'func': func, 'args': args, 'kwargs': kwargs}))
+        return self._clone(proc_sig, ('apply_to_each_signal', {'func': str(func), 'args': args, 'kwargs': kwargs}))
     
     def regress(self, ref_sig):
         """Regress a reference signal out of the current signal"""
