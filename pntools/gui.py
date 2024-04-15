@@ -2051,6 +2051,7 @@ class VideoAnnotation:
             palette_name = 'Set2'. Color scheme to use. Defaults to 'Set2' from seaborn.
             ax_list = []. If ax_list is specified, then the annotation display will be initialized at those axes.
                 Alternatively, use :py:meth:`VideoAnnotation.setup_display` to specify the axis list and colors.
+            preloaded_json: the result of VideoAnnotation._load_json (in case you prefer to pickle the json files).
     
     Methods:
         to_dlc: Convert from json file format into a deeplabcut dataframe format, and optionally save the file.
@@ -2078,7 +2079,11 @@ class VideoAnnotation:
         else:
             self.video = None
         
-        self.data = self.load()
+        preloaded_json = kwargs.pop("preloaded_json", None)
+        if preloaded_json is None:
+            self.data = self.load()
+        else:
+            self.data = preloaded_json
 
         self.palette = get_palette(kwargs.pop('palette_name', 'Set2'), n_colors=10) # seaborn Set 2
         self.plot_handles = {
