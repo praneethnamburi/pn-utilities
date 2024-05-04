@@ -36,6 +36,7 @@ from matplotlib.gridspec import GridSpec
 from matplotlib.path import Path as mPath
 from matplotlib.widgets import Button as ButtonWidget
 from matplotlib.widgets import LassoSelector as LassoSelectorWidget
+from matplotlib.animation import FFMpegWriter
 
 import pntools as pn
 from pntools import sampled, video
@@ -1399,7 +1400,7 @@ class VideoPointAnnotator(VideoBrowser):
     """
     def __init__(self, 
         vid_name: Path, 
-        annotation_names: Union[list[str], Mapping[str, Path]] = '', 
+        annotation_names: Union[list[str], Mapping[str, Path], list[VideoAnnotation]] = '', 
         titlefunc: Callable = None,
         image_process_func: Callable = lambda im: im,
         height_ratios: tuple = (10,1,1) # depends on your screen size
@@ -1446,20 +1447,34 @@ class VideoPointAnnotator(VideoBrowser):
             plt.setp(self._ax_trace_x.get_xticklabels(), visible=False)
             self.figure.tight_layout()
             plt.draw()
-            
-    def load_annotation_layers(self, annotation_names: Union[list[str], dict[str, Path]]):
+    
+    @classmethod
+    def from_annotations(cls, annotations: list[VideoAnnotation], *args, **kwargs):
+        if isinstance(annotations, VideoAnnotation):
+            annotations = [annotations]
+        video_names = {a.video.fname for a in annotations}
+        assert len(video_names) == 1 # same video across all annotations
+        return cls(video_names.pop(), annotations, *args, **kwargs)
+        
+    def load_annotation_layers(self, annotation_names: Union[list[str], dict[str, Path], list[VideoAnnotation]]):
         """Load data from annotation files if they exist, otherwise initialize annotation layers."""
-        if isinstance(annotation_names, str):
+        if isinstance(annotation_names, (str, VideoAnnotation)):
             annotation_names = [annotation_names]
+        
+        if isinstance(annotation_names, list) and all([isinstance(a, VideoAnnotation) for a in annotation_names]):
+            annotation_names = {a.name: a.fname for a in annotation_names} # re-add because of plotting
+        
         if "buffer" not in annotation_names:
             if isinstance(annotation_names, list):
                 annotation_names.append("buffer")
             else:
                 annotation_names["buffer"] = self._get_fname_annotations("buffer")
+        
         if isinstance(annotation_names, dict):
             ann_name_fname = annotation_names
         else:
             ann_name_fname = {name: self._get_fname_annotations(name) for name in annotation_names}
+        
         for name, fname in ann_name_fname.items():
             self.annotations.add(
                 name            = name, 
@@ -1470,6 +1485,7 @@ class VideoPointAnnotator(VideoBrowser):
                 ax_list_trace_y = [self._ax_trace_y],
                 palette_name    = 'Set2'
                 )
+        
         # same set of non-empty labels in all the loaded annotations
         all_labels = []
         for ann in self.annotations._list:
@@ -1539,6 +1555,11 @@ class VideoPointAnnotator(VideoBrowser):
         self.add_key_binding('a', self.interpolate_with_lk, 'Interpolate current point with LK')
         self.add_key_binding('ctrl+a', 
             (lambda s: s.interpolate_with_lk(all_labels=True)).__get__(self), 
+            'Interpolate all points with LK'
+            )
+        
+        self.add_key_binding('ctrl+d', 
+            (lambda s: s.interpolate_with_lk_norstc(all_labels=True)).__get__(self), 
             'Interpolate all points with LK'
             )
         
@@ -1966,6 +1987,27 @@ class VideoPointAnnotator(VideoBrowser):
                 self._add_annotation(location, frame_number, label)
         self.update()
     
+    def interpolate_with_lk_norstc(self, all_labels=False):
+        video = self.data
+        if self._current_overlay is None:
+            return
+        
+        if all_labels:
+            label_list = self.annotations[self._current_overlay].labels
+        else:
+            label_list = [self._current_label]
+        
+        start_frame, end_frame = self.get_selected_interval()
+        ann_overlay = self.annotations[self._current_overlay]
+        start_points = [ann_overlay.data[label][start_frame] for label in label_list]
+        end_points = [ann_overlay.data[label][end_frame] for label in label_list]
+        rstc_path = lucas_kanade(video, start_frame, end_frame, start_points)
+        for frame_count, frame_number in enumerate(range(start_frame, end_frame+1)):
+            for label_count, label in enumerate(label_list):
+                location = list(rstc_path[frame_count, label_count, :])
+                self._add_annotation(location, frame_number, label)
+        self.update()
+    
     def check_labels_with_lk(self, mode="minimal"):
         """Interpolate between all labeled frames. 
         This only makes sense for sparse-labeled annotations.
@@ -2012,23 +2054,17 @@ class VideoPointAnnotator(VideoBrowser):
                 rstc_paths[label][start_frame:end_frame+1, :] = np.squeeze(rstc_path)
         self.update()
     
-    def moving_average_with_lk(self, window_size=0.5):
-        """Apply moving average filter with lucas-kanade and put it in the buffer."""
-        source_ann = self.annotations[self._current_overlay]
-        target_ann = self.annotations["buffer"]
-        video = source_ann.video
-        label_list = source_ann.labels
-        n_window_frames = round(window_size*source_ann.video.get_avg_fps())
-        frame_list = list(range(source_ann.n_frames))
-
-        rstc_paths = np.full((n_window_frames, source_ann.n_frames, len(label_list), 2), np.nan)
-        for cnt, (start_frame, end_frame) in tqdm(enumerate(zip(frame_list, frame_list[n_window_frames-1:]))):
-            start_points = [source_ann.data[label][start_frame] for label in label_list]
-            end_points = [source_ann.data[label][end_frame] for label in label_list]
-            rstc_path = lucas_kanade_rstc(video, start_frame, end_frame, start_points, end_points)
-            rstc_paths[cnt%n_window_frames, start_frame:end_frame+1, :, :] = rstc_path
-        return rstc_paths
-
+    def render(self, start_frame, end_frame):
+        out_vid_name = Path(self.ann.fname).with_suffix(".mp4")
+        assert not os.path.exists(out_vid_name)
+        fps = self.ann.video.get_avg_fps()
+        codec = "h264"
+        writer = FFMpegWriter(fps=fps, codec=codec)
+        with writer.saving(self.figure, out_vid_name, dpi=300):
+            for idx in range(start_frame, end_frame+1):
+                self._current_idx = idx
+                self.update()
+                writer.grab_frame()
 
 
 class VideoAnnotation:
@@ -2197,20 +2233,24 @@ class VideoAnnotation:
     @staticmethod
     def _dlc_trace_to_annotation_dict(df, remove_label_prefix='point'):
         """Convery dlc labeled trace dataframe (result of analyze_videos) to an annotation dictionary."""
-        labels = [x.removeprefix(remove_label_prefix) for x in df.columns.levels[1]]
+        if False in [x.removeprefix(remove_label_prefix).isdigit() for x in df.columns.levels[1]]:
+            label_orig_to_internal = {x:str(xcnt) for xcnt, x in enumerate(df.columns.levels[1].tolist())}
+        else:
+            label_orig_to_internal = {x:x.removeprefix(remove_label_prefix) for x in df.columns.levels[1].tolist()}
         frames = df.index.values
+        print(label_orig_to_internal)
 
-        data = {label: {} for label in labels}
+        data = {label: {} for label in label_orig_to_internal.values()}
         scorer = df.columns.levels[0].values[0]
-        for label in labels:
+        for label_orig, label_internal in label_orig_to_internal.items():
             for frame in frames:
                 coord_val = [
-                    df.loc[frame][scorer, f'{remove_label_prefix}{label}', coord_name]
+                    df.loc[frame][scorer, label_orig, coord_name]
                     for coord_name in ('x', 'y')
                     ]
                 if np.all(np.isnan(coord_val)):
                     continue
-                data[label][frame] = coord_val
+                data[label_internal][frame] = coord_val
 
         return data
     
@@ -2634,8 +2674,13 @@ class VideoAnnotation:
 
 
 class VideoAnnotations(AssetContainer):
-    def add(self, name, fname=None, vname=None, **kwargs):
-        ann = VideoAnnotation(fname, vname, name, **kwargs)
+    def add(self, name: Union[str, VideoAnnotation], fname=None, vname=None, **kwargs):
+        """Create-and-add"""
+        if isinstance(name, VideoAnnotation):
+            ann = name
+        else:
+            assert isinstance(name, str)
+            ann = VideoAnnotation(fname, vname, name, **kwargs)
         return super().add(ann)
 
 def lucas_kanade(
@@ -3250,5 +3295,8 @@ def get_palette(palette_name='Set2', n_colors=10):
         return palettes[palette_name][:n_colors]
 
 if __name__ == "__main__":
+    vname = r"S:\2201000537 - Operator\data\001_01\ml_models\dlc\opr01-s001_g01-2023-05-04\videos\us_b_009.mp4"
+    fname = r"S:\2201000537 - Operator\data\001_01\ml_models\dlc\opr01-s001_g01-2023-05-04\videos\iteration-4\us_b_009DLC_resnet50_opr01May4shuffle1_550000.h5"
+    v = VideoAnnotation(fname, vname)
     vname = r"\\192.168.1.5\Studies\2201000537 - Operator\data_opr02\009_01\ml_models\dlc\opr02_s009_t007_u005.mp4"
     v = VideoPointAnnotator(vname, 'test1234')
