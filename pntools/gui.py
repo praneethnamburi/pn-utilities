@@ -2211,22 +2211,27 @@ class VideoAnnotation:
     @staticmethod
     def _dlc_df_to_annotation_dict(df, remove_label_prefix='point', img_prefix='img', img_suffix='.png'):
         """Convert dlc labeled data dataframe to an annotation dictionary"""
+        if False in [x.removeprefix(remove_label_prefix).isdigit() for x in df.columns.levels[1]]:
+            label_orig_to_internal = {x:str(xcnt) for xcnt, x in enumerate(df.columns.levels[1].tolist())}
+        else:
+            label_orig_to_internal = {x:x.removeprefix(remove_label_prefix) for x in df.columns.levels[1].tolist()}
+        
         labels = [x.removeprefix(remove_label_prefix) for x in df.columns.levels[1]]
         frames_str = [x.removeprefix(img_prefix).removesuffix(img_suffix) for x in df.index.levels[-1]]
 
-        data = {label: {} for label in labels}
+        data = {label: {} for label in label_orig_to_internal.values()}
         video_stem = df.index.levels[1].values[0]
         scorer = df.columns.levels[0].values[0]
-        for label in labels:
+        for label_orig, label_internal in label_orig_to_internal.items():
             for frame_str in frames_str:
                 coord_val = [
                     df.loc['labeled-data', video_stem, f'{img_prefix}{frame_str}{img_suffix}']
-                        [scorer, f'{remove_label_prefix}{label}', coord_name] 
+                        [scorer, label_orig, coord_name] 
                     for coord_name in ('x', 'y')
                     ]
                 if np.all(np.isnan(coord_val)):
                     continue
-                data[label][int(frame_str)] = coord_val
+                data[label_internal][int(frame_str)] = coord_val
         
         return data
     
