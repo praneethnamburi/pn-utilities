@@ -2216,7 +2216,6 @@ class VideoAnnotation:
         else:
             label_orig_to_internal = {x:x.removeprefix(remove_label_prefix) for x in df.columns.levels[1].tolist()}
         
-        labels = [x.removeprefix(remove_label_prefix) for x in df.columns.levels[1]]
         frames_str = [x.removeprefix(img_prefix).removesuffix(img_suffix) for x in df.index.levels[-1]]
 
         data = {label: {} for label in label_orig_to_internal.values()}
