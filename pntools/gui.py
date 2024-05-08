@@ -365,6 +365,33 @@ class EventData:
         x.sort()
         return x
 
+    def to_portions(self):
+        return functools.reduce(lambda a,b: a|b, [pn.portion.closed(*interval_limits) for interval_limits in self.get_times()])
+    
+    def __and__(self, other: EventData):
+        return EventData(default=list(self.to_portions() & other.to_portions()))
+    
+    def __contains__(self, item):
+        return item in self.to_portions()
+    
+    @staticmethod
+    def _process_inp(other):
+        if not isinstance(other, pn.portion.Interval):
+            assert len(other) == 2
+            other = pn.portion.closed(*other)
+        return other
+
+    def overlap_duration(self, other) -> float:
+        """Duration of 'other' that overlaps with self"""
+        other = self._process_inp(other)
+        return (self.to_portions() & other).duration
+    
+    def overlap_frac(self, other) -> float:
+        """Fraction of 'other' that overlaps with self"""
+        other = self._process_inp(other)
+        return self.overlap_duration(other)/other.duration
+
+
 class Event:
     """
     Manage selection of a sequence of events (of length >= 1)
