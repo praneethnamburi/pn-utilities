@@ -2369,8 +2369,23 @@ class VideoAnnotation:
             return self.get_at_frame(key)
         raise ValueError(f'{key} is neither an annotation nor a frame with annotation.')
     
-    def to_dlc(self, scorer='praneeth', output_path=None, file_prefix=None, img_prefix='img', img_suffix='.png', label_prefix='point', save=True):
+    def to_dlc(self, 
+            scorer: str='praneeth', 
+            output_path: str=None, 
+            file_prefix: str=None, 
+            img_prefix: str='img', 
+            img_suffix: str='.png', 
+            label_prefix: str='point', 
+            save: bool=True, 
+            internal_to_dlc_labels: dict=None
+            ) -> pd.DataFrame:
         """Save annotations in deeplabcut format."""
+        if internal_to_dlc_labels is not None: # label_prefix is ignored if internal_to_dlc_labels are provided
+            assert set(internal_to_dlc_labels) == set(self.labels)
+            internal_to_dlc_labels = {x:internal_to_dlc_labels[x] for x in self.labels} # in case of ordering mishaps
+        else:
+            internal_to_dlc_labels = {x:f'{label_prefix}{x}' for x in self.labels}
+
         annotations = self.data
         
         if output_path is None:
@@ -2381,12 +2396,13 @@ class VideoAnnotation:
         img_stems = [f'{img_prefix}{x:0{index_length}}{img_suffix}' for x in self.frames]
         
         row_idx = pd.MultiIndex.from_tuples([('labeled-data', self.video.name, img_stem) for img_stem in img_stems])
-        col_idx = pd.MultiIndex.from_product([[scorer], [f'{label_prefix}{x}' for x in annotations], ['x', 'y']], names = ['scorer', 'bodyparts', 'coords'])
+        col_idx = pd.MultiIndex.from_product([[scorer], [internal_to_dlc_labels[x] for x in annotations], ['x', 'y']], names = ['scorer', 'bodyparts', 'coords'])
         df = pd.DataFrame([], index=row_idx, columns=col_idx)
-        for annotation_label, annotation_dict in annotations.items():
+        for annotation_label_internal, annotation_dict in annotations.items():
+            annotation_label_dlc = internal_to_dlc_labels[annotation_label_internal]
             for frame, xy in annotation_dict.items():
                 for coord_name, coord_val in zip(('x', 'y'), xy):
-                    df.loc['labeled-data', self.video.name, f'{img_prefix}{frame:0{index_length}}{img_suffix}'][scorer, f'{label_prefix}{annotation_label}', coord_name] = coord_val
+                    df.loc['labeled-data', self.video.name, f'{img_prefix}{frame:0{index_length}}{img_suffix}'][scorer, annotation_label_dlc, coord_name] = coord_val
         df = df.apply(lambda col:pd.to_numeric(col, errors='coerce'))
 
         if file_prefix is None:
