@@ -866,17 +866,17 @@ class Data: # Signal processing
 
     def logdj2(self, interpnan_maxgap=None):
         """
-        CAUTION: makes sense ONLY if self is a velocity signal
+        CAUTION: makes sense ONLY if self is a speed signal
         Computes the log dimensionless jerk of marker velocity. Variation with speed instead of velocity
         interpnan_maxgap - maximum gap (in number of samples) to interpolate.
             - None (default) interpolates all gaps. Supply 0 to not interpolate.
         """
-        vel = self.interpnan(maxgap=interpnan_maxgap)
+        speed = self.interpnan(maxgap=interpnan_maxgap)
 
         dt = 1/self.sr
-        scale = np.power(self.dur, 3) / np.power(np.max(vel._sig), 2)
+        scale = np.power(self.dur, 3) / np.power(np.max(speed._sig), 2)
 
-        jerk = vel.apply(np.gradient, dt).apply(np.gradient, dt)
+        jerk = speed.apply(np.gradient, dt).apply(np.gradient, dt)
         return -np.log(scale * simpson(np.power(jerk(), 2), dx=dt))
 
     def sparc(self, fc=10.0, amp_th=0.05, interpnan_maxgap=None):
