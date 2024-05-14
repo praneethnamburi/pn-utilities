@@ -879,15 +879,23 @@ class Data: # Signal processing
         jerk = speed.apply(np.gradient, dt).apply(np.gradient, dt)
         return -np.log(scale * simpson(np.power(jerk(), 2), dx=dt))
 
-    def sparc(self, fc=10.0, amp_th=0.05, interpnan_maxgap=None):
+    def sparc(self, fc=10.0, amp_th=0.05, interpnan_maxgap=None, shift_baseline=False, mean_normalize=True):
         """
-        CAUTION: makes sense ONLY if self is a speed signal
-        Computes the SPARC smoothness metric.
-        interpnan_maxgap - maximum gap (in number of samples) to interpolate.
-            - None (default) interpolates all gaps. Supply 0 to not interpolate.
+        CAUTION: makes sense ONLY if self is a speed signal Computes the SPARC
+        smoothness metric. 
+            interpnan_maxgap - maximum gap (in number of samples) to interpolate.
+                - None (default) interpolates all gaps. Supply 0 to not interpolate.
+            shift_baseline - Subtract the mean. Defaults to False mean_normalize -
+                Divide the signal by the mean. Requred to make smoothness metric
+                insensitive to signal amplitude. Defaults to True. 
         """
-        vel = self.interpnan(maxgap=interpnan_maxgap).shift_baseline()
-        freq, Mfreq = vel.fft()
+        speed = self.interpnan(maxgap=interpnan_maxgap)
+        if shift_baseline:
+            speed = speed.shift_baseline()
+        if mean_normalize:
+            speed = speed.apply(lambda x: x/np.nanmean(x))
+
+        freq, Mfreq = speed.fft()
 
         freq_sel = freq[freq <= fc]
         Mfreq_sel = Mfreq[freq <= fc]
@@ -901,7 +909,7 @@ class Data: # Signal processing
         Mf_sel_diff = np.gradient(Mfreq_sel) / np.mean(np.diff(freq_sel))
         fc = freq_sel[-1]
         integrand = np.sqrt((1 / fc) ** 2 + Mf_sel_diff ** 2)
-        sparc = - simpson(integrand, freq_sel)
+        sparc = -simpson(integrand, freq_sel)
         return sparc
 
 
