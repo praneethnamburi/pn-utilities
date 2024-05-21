@@ -1407,7 +1407,7 @@ def to_number(s:str):
     if not isinstance(s, str):
         return s
     if is_numeric(s):
-        return eval(s)
+        return eval(s.lstrip('0'))
     return s
 
 # wrapper around dateutil to check if a string is or has a date
@@ -1501,6 +1501,35 @@ def apply_to_files(file_selectors, include=(), exclude=(), ret_type=list):
 def test_apply_to_files(fname):
     print(fname)
 
+try:
+    from outliers import smirnov_grubbs as grubbs
+    class Grubbs(grubbs.TwoSidedGrubbsTest):
+        def __init__(self, data, alpha=0.05):
+            super().__init__(data)
+            self.alpha = alpha
+
+        @property
+        def critical_value(self):
+            return self._get_g_test(self._copy_data(), alpha=self.alpha)
+        
+        @property
+        def data_without_outliers(self):
+            return self.run(alpha=self.alpha, output_type=grubbs.OutputType.DATA)
+        
+        @property
+        def outlier_values(self):
+            return self.run(alpha=self.alpha, output_type=grubbs.OutputType.OUTLIERS)
+        
+        @property
+        def outlier_indices(self):
+            return self.run(alpha=self.alpha, output_type=grubbs.OutputType.INDICES)
+        
+        @property
+        def z_values(self):
+            return np.abs(self.original_data-self.original_data.mean())/self.data_without_outliers.std()
+        
+except ModuleNotFoundError:
+    print('outlier_utils is not installed in this environment. pip install outlier_utils.')
 
 class List(list):
     def next(self, val):
