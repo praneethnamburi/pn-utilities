@@ -584,12 +584,16 @@ class Data: # Signal processing
                 intvl_end = self.t[sorted((0, key.stop-1, len(self)-1))[1]]
         return Interval(float(intvl_start), float(intvl_end), sr=self.sr)
 
-    def take_by_interval(self, key: Interval):
+    def _interval_to_index(self, key: Interval):
         assert key.sr == self.sr
-        his = self._history + [('slice', key)]
         offset = round(self._t0*self.sr)
         rng_start = sorted((0, key.start.sample-offset, len(self)-1))[1]
         rng_end = sorted((0, key.end.sample-offset+1, len(self)))[1] # +1 because interval object includes both ends!
+        return rng_start, rng_end
+
+    def take_by_interval(self, key: Interval):
+        his = self._history + [('slice', key)]
+        rng_start, rng_end = self._interval_to_index(key)
         proc_sig = self._sig.take(indices=range(rng_start, rng_end), axis=self.axis)
         if hasattr(self, 'meta'):
             meta = self.meta
@@ -811,7 +815,7 @@ class Data: # Signal processing
     def apply_to_each_signal(self, func, *args, **kwargs):
         """Apply a function to each signal (if self is a collection of signals) separately, and put it back together"""
         assert self().ndim == 2
-        proc_sig = np.vstack([func(s._sig, *args, **kwargs) for s in self.split_to_1d()])
+        proc_sig = np.vstack([func(s._sig.copy(), *args, **kwargs) for s in self.split_to_1d()])
         if self.axis == 0:
             proc_sig = proc_sig.T
         return self._clone(proc_sig, ('apply_to_each_signal', {'func': str(func), 'args': args, 'kwargs': kwargs}))
@@ -912,6 +916,25 @@ class Data: # Signal processing
         sparc = -simpson(integrand, freq_sel)
         return sparc
 
+    def set_nan(self, interval_list: list[tuple[float, float]]):
+        """Set parts of a signal to np.nan. 
+        E.g. interval_list = [(90.5, 91.2), (93, 93.5)]
+        """
+        def set_nan(np_arr: np.ndarray, idx_list):
+            np_arr[idx_list] = np.nan
+            return np_arr
+
+        sel = np.zeros(len(self), dtype=bool)
+        for start_time, end_time in interval_list:
+            intvl = Interval(float(start_time), float(end_time), sr=self.sr)
+            start_index, end_index_inc = self._interval_to_index(intvl)
+            sel[start_index:end_index_inc] = True
+            
+        return self.apply_to_each_signal(set_nan, idx_list=sel)
+    
+    def remove_and_interpolate(self, interval_list: list[tuple[float, float]], maxgap=None, **kwargs):
+        """Remove parts of a signal, and interpolate between those points."""
+        return self.set_nan(interval_list).interpnan(maxgap=maxgap, **kwargs)
 
 class DataList(list):
     def __call__(self, **kwargs):
