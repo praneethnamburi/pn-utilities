@@ -934,6 +934,8 @@ class Data: # Signal processing
     
     def remove_and_interpolate(self, interval_list: list[tuple[float, float]], maxgap=None, **kwargs):
         """Remove parts of a signal, and interpolate between those points."""
+        if not interval_list:
+            return self
         return self.set_nan(interval_list).interpnan(maxgap=maxgap, **kwargs)
 
 class DataList(list):
