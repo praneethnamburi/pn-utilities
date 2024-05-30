@@ -917,7 +917,7 @@ class Data: # Signal processing
         sparc = -simpson(integrand, freq_sel)
         return sparc
 
-    def set_nan(self, interval_list: list[tuple[float, float]]):
+    def set_nan(self, interval_list):
         """Set parts of a signal to np.nan. 
         E.g. interval_list = [(90.5, 91.2), (93, 93.5)]
         """
@@ -933,7 +933,7 @@ class Data: # Signal processing
             
         return self.apply_to_each_signal(set_nan, idx_list=sel)
     
-    def remove_and_interpolate(self, interval_list: list[tuple[float, float]], maxgap=None, **kwargs):
+    def remove_and_interpolate(self, interval_list, maxgap=None, **kwargs):
         """Remove parts of a signal, and interpolate between those points."""
         if not interval_list:
             return self
