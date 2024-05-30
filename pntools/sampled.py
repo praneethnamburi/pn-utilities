@@ -293,8 +293,8 @@ class Interval:
         
     def _t(self, rate):
         _t = [self.start.time]
-        while (this_t := _t[-1] + 1./rate) <= self.end.time:
-            _t.append(this_t)
+        while (_t[-1] + 1./rate) <= self.end.time:
+            _t.append(_t[-1] + 1./rate)
         return _t
 
     def __add__(self, other):
@@ -429,7 +429,8 @@ class Data: # Signal processing
         b, a = butter(order, cutoff/(0.5*self.sr), btype=btype, analog=False)
 
         nan_manip = False
-        if (nan_bool := np.isnan(self._sig)).any():
+        nan_bool = np.isnan(self._sig)
+        if nan_bool.any():
             nan_manip = True
             self = self.interpnan() # interpolate missing values before applying an IIR filter
 

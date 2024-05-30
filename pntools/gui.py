@@ -639,7 +639,8 @@ class Event:
                 sequence = ev.added.pop(idx_add)
                 _deleted = True
             if (def_dist < add_dist) and (self.win_remove[0] < def_dist < self.win_remove[1]):
-                ev.removed.append(sequence := ev.default.pop(idx_def))
+                sequence = ev.default.pop(idx_def)
+                ev.removed.append(sequence)
                 _removed = True
         elif len(ev.added) > 0 and len(ev.default) == 0:
             idx_add, val_add = pn.find_nearest(added_start_times, t_marked)
@@ -651,7 +652,8 @@ class Event:
             idx_def, val_def = pn.find_nearest(default_start_times, t_marked)
             def_dist = np.abs(val_def-t_marked)
             if self.win_remove[0] < def_dist < self.win_remove[1]:
-                ev.removed.append(sequence := ev.default.pop(idx_def))
+                sequence = ev.default.pop(idx_def)
+                ev.removed.append(sequence)
                 _removed = True
         else:
             return
