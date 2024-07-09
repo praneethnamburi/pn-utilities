@@ -785,7 +785,7 @@ class Data: # Signal processing
             fn = np.hstack
 
         # returning a marker type even though this is technically not true
-        return self._clone(fn((pp_value, np.diff(self._sig, axis=self.axis, n=order)*self.sr)), ('diff', None))
+        return self._clone(fn((pp_value, np.diff(self._sig, axis=self.axis, n=order)))*self.sr, ('diff', None))
     
     def magnitude(self):
         if self._sig.ndim == 1:
