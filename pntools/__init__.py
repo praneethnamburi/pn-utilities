@@ -1276,9 +1276,11 @@ if not BLENDER_MODE:
 
         if len(col_names) == 2 and kwargs.get('show_stats', True):
             if paired:
-                _, p_val = sstats.ttest_rel(col_data[0], col_data[1], alternative=alternative)
+                st = sstats.ttest_rel(col_data[0], col_data[1], alternative=alternative)
             else:
-                _, p_val = sstats.ttest_ind(col_data[0], col_data[1], alternative=alternative, equal_var=equal_var, permutations=permutations)
+                st = sstats.ttest_ind(col_data[0], col_data[1], alternative=alternative, equal_var=equal_var, permutations=permutations)
+            p_val = st.pvalue
+            print(st)
             ax.text(0.5, 0.94, p_str(p_val), transform=ax.transAxes, ha='center', va='bottom')
             yl = ax.get_ylim()
             yc = yl[0] + np.diff(yl)*0.93
