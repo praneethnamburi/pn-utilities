@@ -515,7 +515,7 @@ class Data: # Signal processing
     def shift_baseline(self, offset=None): 
         # you can use numpy broadcasting to shift each signal if multi-dimensional
         if offset is None:
-            offset = np.mean(self._sig, self.axis)
+            offset = np.nanmean(self._sig, self.axis)
         return self._clone(self._sig - offset, ('shift_baseline', offset))
     
     def shift_left(self, time:float=None):
