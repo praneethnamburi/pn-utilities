@@ -1,16 +1,52 @@
 """
-Simple Graphical User Interface elements for browsing data
+Simple Graphical User Interface elements for browsing data.
+
+This module provides classes and functions to create and manage graphical user interfaces for browsing and interacting with various types of data, including signals, plots, and videos. It includes support for event handling, and data visualization.
 
 Classes:
     GenericBrowser - Generic class to browse data. Meant to be extended.
-    SignalBrowser - Browse an array of pntools.Sampled.Data elements, or 2D arrays
-    PlotBrowser - Scroll through an array of complex data where a plotting function is defined for each element
-    VideoBrowser - Scroll through images of a video
-    VideoPlotBrowser - Browse through video and 1D signals synced to the video side by side
+    SignalBrowser - Browse an array of pntools.Sampled.Data elements, or 2D arrays.
+    PlotBrowser - Scroll through an array of complex data where a plotting function is defined for each element.
+    VideoBrowser - Scroll through images of a video.
+    VideoPlotBrowser - Browse through video and 1D signals synced to the video side by side.
+    
+    Button - Custom button widget with a 'name' state.
+    StateButton - Button widget that stores a number/coordinate state.
+    ToggleButton - Button widget with a toggle state.
+    Selector - Select points in a plot using the lasso selection widget.
+    StateVariable - Manage state variables with multiple states.
+    EventData - Manage the data from one event type in one trial.
+    Event - Manage selection of a sequence of events.
+    TextView - Show text array line by line.
+    
+    AssetContainer - Container for managing assets such as buttons, memory slots, etc.
+    Buttons - Manager for buttons in a matplotlib figure or GUI.
+    Selectors - Manager for selector objects for picking points on line2D objects.
+    MemorySlots - Manager for memory slots to store and navigate positions.
+    StateVariables - Manager for state variables.
+    Events - Manager for event objects.
+    
+    Video - Extended VideoReader class with additional functionalities (helper for VideoPointAnnotator).
+    VideoAnnotation - Manage one point annotation layer in a video.
+    VideoAnnotations - Manager for multiple video annotation layers.
+    VideoPointAnnotator - Annotate points in a video.
 
-    Future:
-        Extend VideoBrowser to play, pause and extract clips using hotkeys. Show timeline in VideoBrowser.
-        Add clickable navigation.
+Functions:
+    _parse_fax - Helper function to parse figure or axes.
+    _parse_pos - Helper function to parse position strings.
+    get_palette - Get a color palette, with fallback if seaborn is not available.
+    
+    lucas_kanade - Track points in a video using the Lucas-Kanade algorithm.
+    lucas_kanade_rstc - Track points in a video using Lucas-Kanade with reverse sigmoid tracking correction.
+    test_lucas_kanade_rstc - Test function for Lucas-Kanade with reverse sigmoid tracking correction.
+
+Constants:
+    CLIP_FOLDER - Default folder for storing video clips.
+
+Future Enhancements:
+    - Extend VideoBrowser to play, pause, and extract clips using hotkeys.
+    - Show timeline in VideoBrowser.
+    - Add clickable navigation.
 """
 from __future__ import annotations
 
@@ -68,6 +104,26 @@ def _parse_pos(pos):
     assert len(pos) == 4
     return pos
 
+def get_palette(palette_name='Set2', n_colors=10):
+    try: # remove seaborn dependency by manually specifying a color palette
+        import seaborn as sns
+        return sns.color_palette(palette_name, n_colors=n_colors)
+    except ModuleNotFoundError:
+        palettes = {
+            'Set2': [ # seaborn set 2
+                (0.40, 0.76, 0.65),
+                (0.99, 0.55, 0.38),
+                (0.55, 0.63, 0.79),
+                (0.91, 0.54, 0.76),
+                (0.65, 0.85, 0.33),
+                (1.00, 0.85, 0.18),
+                (0.90, 0.77, 0.58),
+                (0.70, 0.70, 0.70),
+                (0.40, 0.76, 0.65),
+                (0.99, 0.55, 0.38)
+            ]}
+        return palettes[palette_name][:n_colors]
+
 
 ### Extended widget classes
 class Button(ButtonWidget):
@@ -85,7 +141,7 @@ class ToggleButton(StateButton):
     """
     Add a toggle button to a matplotlib figure
 
-    For example usage, see plot browser
+    For example usage, see PlotBrowser
     """
     def __init__(self, ax, name:str, start_state:bool=True, **kwargs) -> None:
         super().__init__(ax, name, start_state, **kwargs)
@@ -3331,26 +3387,6 @@ class SelectorFigureDemo:
     def stop(self, event=None):
         self.lasso.disconnect_events()
 
-
-def get_palette(palette_name='Set2', n_colors=10):
-    try:
-        import seaborn as sns
-        return sns.color_palette(palette_name, n_colors=n_colors)
-    except ModuleNotFoundError:
-        palettes = {
-            'Set2': [ # seaborn set 2
-                (0.40, 0.76, 0.65),
-                (0.99, 0.55, 0.38),
-                (0.55, 0.63, 0.79),
-                (0.91, 0.54, 0.76),
-                (0.65, 0.85, 0.33),
-                (1.00, 0.85, 0.18),
-                (0.90, 0.77, 0.58),
-                (0.70, 0.70, 0.70),
-                (0.40, 0.76, 0.65),
-                (0.99, 0.55, 0.38)
-            ]}
-        return palettes[palette_name][:n_colors]
 
 if __name__ == "__main__":
     vname = r"S:\2201000537 - Operator\data\001_01\ml_models\dlc\opr01-s001_g01-2023-05-04\videos\us_b_009.mp4"

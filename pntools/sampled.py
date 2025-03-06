@@ -1,8 +1,36 @@
 """
-Tools for working with sampled data
-"""
+Tools for working with uniformly sampled (time series) data.
 
-import collections
+This module provides classes and functions to handle and process sampled data, referring to uniformly sampled time series data. It includes wrappers for basic signal processing techniques, time and interval management, and event handling.
+
+Classes:
+    Time - Encapsulates sampling rate, sample number, and time for sampled data.
+    Interval - Represents an interval with start and end times, includes iterator protocol.
+    Data - Provides various signal processing methods for sampled data.
+    DataList - A list of Data objects with filtering capabilities based on metadata.
+    Event - An interval with labels for event handling.
+    Events - A list of Event objects with label-based selection.
+    RunningWin - Manages running windows for data processing.
+    DataSegments - Represents 2D data where each piece is along a parent timeline.
+    Siglets - A collection of signal pieces for event-triggered analyses.
+
+Functions:
+    interpnan - Interpolates NaNs in a 1D signal.
+    onoff_samples - Finds onset and offset samples of a 1D boolean signal.
+    uniform_resample - Uniformly resamples a signal at a given sampling rate.
+    frac_power - Calculates the fraction of power in a specific frequency band.
+
+Examples:
+    CAUTION: In this module, when referring to time, integers are interpreted as sample numbers, and floats are interpreted as time in seconds.
+
+    sig = Data(np.random.random((10, 3)), sr=2, t0=5.) # 5 seconds
+    x3 = sig[5.:5.05]()
+    x3.interval().end
+    x3[:1]()                                           # retrieve the first sample (NOT until 1 s)
+    x3[0:5.5](), x3[5.0:5.5]()
+
+    sig.apply_running_win(lambda x: np.sqrt(np.mean(x**2)), win_size=0.25, win_inc=0.1)
+"""
 
 import numpy as np
 from scipy.fft import fft, fftfreq
@@ -14,7 +42,7 @@ from scipy.signal import (butter, filtfilt, firwin, hilbert, iirnotch,
 
 class Time:
     """
-    Time when working with sampled data (including video). INTEGER IMPLIES SAMPLE NUMBER, FLOAT IMPLIES TIME.
+    Time when working with sampled data (including video). INTEGER IMPLIES SAMPLE NUMBER, FLOAT IMPLIES TIME IN SECONDS.
     Use this to encapsulate sampling rate (sr), sample number (sample), and time (s).
     When the sampling rate is changed, the sample number is updated, but the time is held constant.
     When the time is changed, sample number is updated.
@@ -121,80 +149,6 @@ class Time:
     
     def __repr__(self):
         return "time={:.3f} s, sample={}, sr={} Hz ".format(self.time, self.sample, self.sr) + super().__repr__()
-
-
-class Sequence:
-    """
-    Create a sequence of named time objects (collection).
-    Created for working with motion sequences / periodic data collected
-    from multiple modalities/devices where data is sampled at different
-    rates. 
-    Seqeuences of events in the real-world are observed through
-    different modalities, but there is only one 'base' time in the real
-    world, and each data acquistion modality is going to have its own
-    clock and sampling rate. I want to be able to refer to the
-    event/sequence in the real world.
-
-    Inputs:
-        marker_names - string of words separated by spaces, like input to namedtuple
-        input_sr     - sampling rate at which time will be specified
-    Example:
-        normal_pitching = Sequence('start emg_start acc_start foot_off release end', input_sr=30.)
-        normal_pitching.append('00;05;57;26', '00;05;58;18', '00;06;00;20', '00;06;00;26', '00;06;00;29', '00;06;01;29')
-        normal_pitching[0].emg_start
-
-        n_zoom = normal_pitching.change_sr(25.) # when retrieving frames from zoom
-        n_canon = normal_pitching.change_sr(30.) # when retrieving frames from canon DSLR
-        n_motive = normal_pitching.change_sr(180.) # when working with motion capture videos
-        n_delsys = normal_pitching.change_sr(2000.) # when dealing with EMG data sampled at 2000 Hz
-        n_delsys[0].emg_start
-
-        n_zoom.all_labels()
-    """
-    def __init__(self, marker_names, input_sr=30., output_sr=180.):
-        self._marker_names = marker_names
-        self._template = collections.namedtuple('Sequence', marker_names)
-        self._data = [] # each entry is a dictionary with ev and labels
-        self._input_sr = input_sr # sampling rate of timestamps that will be input
-        self._output_sr = output_sr
-    
-    def append(self, *args, **kwargs):
-        """Add a sequence to this collection."""
-        labels = kwargs.pop('labels', [])
-        if isinstance(labels, str):
-            labels = [labels]
-        processed_args = []
-        for arg in args:
-            processed_args.append(self._process_inp(arg).change_sr(self._output_sr))
-        processed_kwargs = {}
-        for kwarg_name, kwarg in kwargs.items():
-            processed_kwargs[kwarg_name] = self._process_inp(kwarg).change_sr(self._output_sr)
-        self._data.append({'ev': self._template(*processed_args, **processed_kwargs), 'labels': labels})
-
-    def __getitem__(self, key):
-        """Retrieve event from the _data list. This hides the labels."""
-        if isinstance(key, int):
-            return self._data[key]['ev']
-        elif isinstance(key, str):
-            return [d['ev'] for d in self._data if key in d['labels']]
-    
-    def change_sr(self, new_sr): # rename to change_modality?
-        """Create a new sequence object where output sampling rate is new_sr"""
-        s = Sequence(self._marker_names, self._input_sr, new_sr)
-        for d in self._data:
-            s.append(**d['ev']._asdict(), labels=d['labels'])
-        return s
-
-    def all_labels(self):
-        ret = []
-        for d in self._data:
-            ret += d['labels']
-        return set(ret)
-
-    def _process_inp(self, inp):
-        if isinstance(inp, Time):
-            return inp # sr is ignored, superseded by input's sampling rate
-        return Time(inp, self._input_sr) # string, float, int or tuple. sr is ignored if tuple.
 
 
 class Interval:
