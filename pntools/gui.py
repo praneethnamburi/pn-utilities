@@ -1252,6 +1252,15 @@ class VideoBrowser(GenericBrowser):
         if self.__class__.__name__ == 'VideoBrowser': # if an inherited class is accessing this, then don't run the update function here
             plt.show(block=False)
             self.update()
+    
+    def increment_frac(self, n_steps=100):
+        # browse entire dataset in n_steps
+        self._current_idx = min(self._current_idx+int(len(self)/n_steps), len(self)-1)
+        self.update()
+
+    def decrement_frac(self, n_steps=100):
+        self._current_idx = max(self._current_idx-int(len(self)/n_steps), 0)
+        self.update()
 
     def update(self):
         self._im.set_data(self.image_process_func(self.data[self._current_idx].asnumpy()))
