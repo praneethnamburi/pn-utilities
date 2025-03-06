@@ -1,20 +1,28 @@
 """
 Tools for working with uniformly sampled (time series) data.
 
-This module provides classes and functions to handle and process sampled data, referring to uniformly sampled time series data. It includes wrappers for basic signal processing techniques, time and interval management, and event handling.
+This module provides classes and functions to handle and process sampled data, referring to uniformly sampled time series data. 
+
+`sampled.Data is the most important class in this module. It allows for easy signal splicing, and includes wrappers for basic signal processing techniques. The `sampled.Data` class encapsulates signal values (data) with the sampling rate and provides wrappers for performing basic signal processing. It uses the `sampled.Time` class to ease the burden of managing time and converting between time (in seconds) and sample numbers.
 
 Classes:
+    Data - Provides various signal processing methods for sampled data.
+    
     Time - Encapsulates sampling rate, sample number, and time for sampled data.
     Interval - Represents an interval with start and end times, includes iterator protocol.
-    Data - Provides various signal processing methods for sampled data.
-    DataList - A list of Data objects with filtering capabilities based on metadata.
+    
+    Siglets - A collection of signal pieces for event-triggered analyses.
+    
+    # support classes for Data
+    RunningWin - Manages running windows for data processing.
+    
+    # classes to extend the functionality of Data and Interval classes
+    DataList - A list of `sampled.Data` objects with filtering capabilities based on metadata.
     Event - An interval with labels for event handling.
     Events - A list of Event objects with label-based selection.
-    RunningWin - Manages running windows for data processing.
-    DataSegments - Represents 2D data where each piece is along a parent timeline.
-    Siglets - A collection of signal pieces for event-triggered analyses.
 
 Functions:
+    # support functions for the `sampled.Data` class
     interpnan - Interpolates NaNs in a 1D signal.
     onoff_samples - Finds onset and offset samples of a 1D boolean signal.
     uniform_resample - Uniformly resamples a signal at a given sampling rate.
@@ -979,9 +987,6 @@ class RunningWin:
     def __len__(self):
         return self.n_win
 
-
-class DataSegments(Data):
-    """2D-data where each piece is along a parent timeline"""
 
 class Siglets:
     """A collection of pieces of signals to do event-triggered analyses"""
