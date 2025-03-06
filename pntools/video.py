@@ -144,6 +144,13 @@ def separate_audio(vid_file:str):
     print(f"{aud_file} already exists. Skipping!")
         
 
+def process_slomo(vid_file:str, factor=8.0):
+      vid_file_out = os.path.join(Path(vid_file).parent, Path(vid_file).stem + '_slomo.mp4')
+      if not os.path.exists(vid_file_out):
+        ret = subprocess.getoutput(f'ffmpeg -i "{vid_file}" -c:v h264_nvenc -filter:v "setpts={factor:.1f}*PTS" -an "{vid_file_out}"')
+        return ret
+      print(f"{vid_file_out} already exists. Skipping!")
+
 def reencode(vid_files, out_files=None, preset='plain', overwrite=False):
     """
     Often used to re-encode videos using ffmpeg to save disk space
