@@ -10,7 +10,7 @@ Communication (with external processes).
 
 ### Submodules
 
-**sampled** (Tools for working with sampled data):
+**sampled** (Tools for working with sampled data - refactored into the [pysampled](https://pypi.org/project/pysampled) module):
 
     * Time      - Encapsulates time and sampling rate
     * Interval  - Start and stop times with extracting samples at different rates

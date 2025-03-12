@@ -33,6 +33,7 @@ except ImportError:
     BLENDER_MODE = False
 
 from pyfilemanager import FileManager, find, get_file_sizes
+import pysampled as sampled
 
 
 ## Inheritance
