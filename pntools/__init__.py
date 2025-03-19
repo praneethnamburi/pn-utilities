@@ -1103,7 +1103,7 @@ def scale_data(d:np.ndarray, d_lim:tuple=None, clip:bool=True) -> np.ndarray: # 
         d[d > d_lim[1]] = np.nan
     return (d - do)/dw
 
-def find_nearest(array, value):
+def find_nearest_idx_val(array, value):
     array = np.asarray(array)
     idx = (np.abs(array - value)).argmin()
     val = array[idx]
