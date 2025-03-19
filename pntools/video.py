@@ -32,7 +32,7 @@ if not ffmpeg_is_found():
 def _get_codec_types(vid_file:str):
     return subprocess.getoutput(f'ffprobe -loglevel error -show_entries stream=codec_type -of default=nw=1 "{vid_file}"')
 
-def is_video(vid_file:str, verbose=False) -> bool:
+def is_video(vid_file:str, verbose=False) -> bool: # refactored into datanavigator.utils
     codec_types = _get_codec_types(vid_file)
     if verbose:
         my_print = print

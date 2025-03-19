@@ -1074,7 +1074,7 @@ def flip_nested_dict(data:dict) -> dict:
             flipped[subkey][key] = subval
     return flipped
 
-def find_nearest(x, y):
+def find_nearest(x, y): #@# REFACTORED INTO datanavigator.utils
     """
     Find the nearest x-values for every value in y.
     x and y are expected to be lists of floats.
@@ -1142,7 +1142,7 @@ def p_str(p_val, sep=''):
     return f'{p_star(p_val)}{sep}p={p_val:.2g}'
 
 ## matplotlib-specific stuff
-def ticks_from_times(times, tick_lim):
+def ticks_from_times(times, tick_lim): #@# REFACTORED INTO datanavigator.utils
     """Generate x, y arrays to supply to plt.plot function to plot a set of x-values (times) as ticks."""
     def nan_pad_x(inp):
             return [item for x in inp for item in (x, x, np.nan)]
@@ -1290,7 +1290,7 @@ if not BLENDER_MODE:
         return ax
 
 
-### ------- FROM STACK OVERFLOW
+### ------- FROM STACK OVERFLOW -- #@# REFACTORED INTO datanavigator.utils
 # Sadly, Python fails to provide the following magic number for us.
 ERROR_INVALID_NAME = 123
 '''
@@ -1533,7 +1533,7 @@ try:
 except ModuleNotFoundError:
     print('outlier_utils is not installed in this environment. pip install outlier_utils.')
 
-class List(list):
+class List(list): #@# REFACTORED INTO datanavigator.utils
     def next(self, val):
         """Next element in the list closest to val."""
         return min([x for x in self if x > val], default=max(self))
