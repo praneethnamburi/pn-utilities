@@ -2215,7 +2215,7 @@ class VideoAnnotation:
         else:
             self.data = preloaded_json
 
-        self.palette = get_palette(kwargs.pop('palette_name', 'Set2'), n_colors=10) # seaborn Set 2
+        self.palette = get_palette(kwargs.pop('palette_name', 'Set2'), n_colors=15) # seaborn Set 2
         self.plot_handles = {
             'ax_list_scatter': kwargs.pop('ax_list_scatter', []),
             'ax_list_trace_x': kwargs.pop('ax_list_trace_x', []),
