@@ -17,3 +17,4 @@ dependencies:
       - decord
       - opencv-contrib-python
       - pysampled
+      - datanavigator
