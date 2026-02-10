@@ -1285,6 +1285,42 @@ if not BLENDER_MODE:
             yl = ax.get_ylim()
             yc = yl[0] + np.diff(yl)*0.93
             ax.plot(xcat, [yc]*2, color='black', linewidth=1.5)
+
+        # repeated-measures ANOVA and post-hoc tests using pingouin
+        if len(col_names) > 2 and kwargs.get('show_stats', True):
+            if paired:
+                n_subjects = len(col_data[0]) if len(col_data) else 0
+                assert all(len(col) == n_subjects for col in col_data), "rm_anova requires equal n per column"
+                try:
+                    import pingouin as pg
+                    df_wide = pd.DataFrame(col_data, index=col_names).T
+                    df_wide['ID'] = range(1, n_subjects+1)
+                    df_long = df_wide.melt(id_vars='ID', var_name='Time', value_name='Score')
+
+                    aov = pg.rm_anova(dv='Score', within='Time', subject='ID', data=df_long, detailed=True)
+                    print('Repeated measures ANOVA:')
+                    print(aov)
+
+                    post_hocs = pg.pairwise_tests(
+                        data=df_long,
+                        dv='Score',
+                        within='Time',
+                        subject='ID',
+                        parametric=True,
+                        padjust='holm'
+                    )
+                    print('\nPost-hoc tests:')
+                    print(post_hocs[['A', 'B', 'p-unc', 'p-corr', 'hedges']])
+                except ImportError:
+                    print('Install pingouin to use rm_anova (repeated measures ANOVA): pip install pingouin')
+            else:
+                f = sstats.f_oneway(*col_data)
+                tukey = sstats.tukey_hsd(*col_data)
+                print('One-way ANOVA:')
+                print(f)
+                print('\nTukey HSD:')
+                print(tukey)
+
         if plt_show:
             plt.show(block=False)
         return ax
