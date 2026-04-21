@@ -1307,7 +1307,7 @@ if not BLENDER_MODE:
                         within='Time',
                         subject='ID',
                         parametric=True,
-                        padjust='holm'
+                        padjust=kwargs.get('padjust', 'fdr_bh')
                     )
                     print('\nPost-hoc tests:')
                     print(post_hocs[['A', 'B', 'p-unc', 'p-corr', 'hedges']])
