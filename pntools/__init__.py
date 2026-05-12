@@ -1004,7 +1004,10 @@ def spawn_commands(cmds, nproc=3, verbose=False, retry=False, sleep_time=0.5, wa
     while True:
         if n_running() < nproc and cmd_count < len(cmds):
             if os.name == 'nt':
-                all_proc.append(subprocess.Popen(cmds[cmd_count], shell=True, creationflags=0x00000008))
+                # CREATE_NO_WINDOW = 0x08000000: suppress the console window for child ffmpeg etc.
+                # shell=False lets Popen quote argv entries containing spaces correctly on Windows.
+                # creationflags=0x00000008 will spawn in a new window
+                all_proc.append(subprocess.Popen(cmds[cmd_count], creationflags=0x08000000))
             else:
                 all_proc.append(subprocess.Popen(cmds[cmd_count], stderr=subprocess.STDOUT, stdout=subprocess.PIPE))
             time.sleep(sleep_time)
