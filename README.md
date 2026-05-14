@@ -43,9 +43,9 @@ Communication (with external processes).
     * OnDisk         - (Decorator) Raise error if function output file is not on disk
     * ospath         - Find file or directory
     * run            - Run the contents of a file in the console
-    * FileManager    - (from pyfilemanager) Manage files in a project
-    * find           - (from pyfilemanager) Find a file (accepts patterns)
-    * get_file_sizes - (from pyfilemanager) Return size of a list of files in descending order
+
+For file-pattern listing, import `pyfilemanager` directly (no longer re-exported here):
+`pyfilemanager.FileManager`, `pyfilemanager.find`, `pyfilemanager.get_file_sizes`.
 
 **Package management:** (mostly useful during deployment)  
 

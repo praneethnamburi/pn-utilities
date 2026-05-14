@@ -32,7 +32,7 @@ try:
 except ImportError:
     BLENDER_MODE = False
 
-from pyfilemanager import FileManager, find, get_file_sizes
+import pyfilemanager
 
 
 ## Inheritance
@@ -553,15 +553,15 @@ def change_image_dpi(files, dpi:int=300, return_format:str='tif'):
     """
     Change the dpi of a set of images, example - for publication
 
-    Usage - 
-        file_list = find('*.tif', r'C:\Dropbox (MIT)\Manuscripts\20230401 Elastic energy EDM\Premiere pro')
+    Usage -
+        file_list = pyfilemanager.find('*.tif', r'C:\Dropbox (MIT)\Manuscripts\20230401 Elastic energy EDM\Premiere pro')
         change_image_dpi(file_list)
     """
     from PIL import Image
 
     if isinstance(files, str):
         if os.path.isdir(files):
-            file_list = find('*.tif', path=files)
+            file_list = pyfilemanager.find('*.tif', path=files)
         else:
             file_list = [files]
     else:
@@ -581,7 +581,7 @@ def run(filename, start_line=1, end_line=None):
     Runs the last line number indicated as well!
     """
     if not os.path.isfile(filename):
-        filename = find(filename)[0]
+        filename = pyfilemanager.find(filename)[0]
     assert os.path.isfile(filename)
     code = open(filename).readlines()
     if end_line is None:
@@ -1524,7 +1524,7 @@ def apply_to_files(file_selectors, include=(), exclude=(), ret_type=list):
     def wrapper(func):
         def inner_func(fname, *args, **kwargs):
             if os.path.isdir(fname):
-                fm = FileManager(fname)
+                fm = pyfilemanager.FileManager(fname)
                 for file_selector_count, file_selector in enumerate(file_selectors):
                     fm.add(str(file_selector_count), file_selector, include=include, exclude=exclude)
                 if ret_type == list:
