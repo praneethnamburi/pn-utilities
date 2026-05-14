@@ -4,7 +4,7 @@ Praneeth's tools for making life easy while coding in python. These utilities on
 
 ## Organization
 General tools are in __init__.py and and organized into the following categories:
-Inheritance, Event handlers, File system, Package management, 
+Inheritance, File system, Package management,
 Introspection, Input management, Code development,
 Communication (with external processes).
 
@@ -24,13 +24,6 @@ Communication (with external processes).
     * Mixin           - (Decorator) Grab methods from another class, and deepcopy list/dict class attributes
     * port_properties - Implement containers with automatic method routing
     * PortProperties  - (Decorator) for using port_properties
-
-**Event handlers:**  
-
-    * Handler             - Event handlers based on blinker's signal.
-    * handler_id2dict     - Turn a handler ID into meaningful parts
-    * add_handler         - One-liner access to setting up a broadcaster and receiver.
-    * BroadcastProperties - (Decorator) Enables properties in a class to have event handlers.
 
 **File system:**  
 
