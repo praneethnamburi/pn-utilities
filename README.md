@@ -16,11 +16,6 @@ Communication (with external processes).
     * Interval  - Start and stop times with extracting samples at different rates
     * Data      - Encapsulate and manipulate sampled data using signal processing algorithms
 
-**video** (Tools for working with video data):
-
-    * download  - Download a video from YouTube, and extract a clip
-    * View      - Browse videos frame by frame
-
 ## Tool descriptions
 
 **Inheritance:** (Special cases where I needed to tweak inheritance)  
