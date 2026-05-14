@@ -788,18 +788,6 @@ def flip_nested_dict(data:dict) -> dict:
             flipped[subkey][key] = subval
     return flipped
 
-def find_nearest(x, y): #@# REFACTORED INTO datanavigator.utils
-    """
-    Find the nearest x-values for every value in y.
-    x and y are expected to be lists of floats.
-    Returns:
-        List with the same number of values as y, but each value is the closest value in x.
-    """
-    x = np.asarray(x)
-    y = np.asarray(y)
-    return [x[np.argmin(np.abs(x - yi))] for yi in y]
-
-
 ## Simple operations
 def split_filename(fname:str) -> tuple:
     name, ext = os.path.splitext(os.path.basename(fname))
@@ -816,20 +804,6 @@ def scale_data(d:np.ndarray, d_lim:tuple=None, clip:bool=True) -> np.ndarray: # 
         d[d < d_lim[0]] = np.nan
         d[d > d_lim[1]] = np.nan
     return (d - do)/dw
-
-def find_nearest_idx_val(array, value):
-    array = np.asarray(array)
-    idx = (np.abs(array - value)).argmin()
-    val = array[idx]
-    return idx, val
-
-def find_nearest_idx(array, value):
-    """Index of the nearest value in the array"""
-    array = np.asarray(array)
-    return (np.abs(array - value)).argmin()
-
-def find_nearest_val(array, value):
-    return array[find_nearest_idx(array, value)]
 
 class Mapping:
     """Create a dictionary map between any two columns of a dataframe"""
@@ -854,15 +828,6 @@ def p_str(p_val, sep=''):
     def p_star(p_val):
         return [ps for ps, sel in zip(('n.s. ', '*', '**', '***'), (0.05<=p_val<=1., 0.01<=p_val<0.05, 0.001<=p_val<0.01, p_val<0.001)) if sel][0]
     return f'{p_star(p_val)}{sep}p={p_val:.2g}'
-
-## matplotlib-specific stuff
-def ticks_from_times(times, tick_lim): #@# REFACTORED INTO datanavigator.utils
-    """Generate x, y arrays to supply to plt.plot function to plot a set of x-values (times) as ticks."""
-    def nan_pad_x(inp):
-            return [item for x in inp for item in (x, x, np.nan)]
-    def nan_pad_y(ylim, n):
-        return [item for y1, y2 in [ylim]*n for item in (y1, y2, np.nan)]
-    return nan_pad_x(times), nan_pad_y(tick_lim, len(times))
 
 if not BLENDER_MODE:
     import matplotlib as mpl
@@ -1040,115 +1005,6 @@ if not BLENDER_MODE:
         return ax
 
 
-### ------- FROM STACK OVERFLOW -- #@# REFACTORED INTO datanavigator.utils
-# Sadly, Python fails to provide the following magic number for us.
-ERROR_INVALID_NAME = 123
-'''
-Windows-specific error code indicating an invalid pathname.
-
-See Also
-----------
-https://learn.microsoft.com/en-us/windows/win32/debug/system-error-codes--0-499-
-    Official listing of all such codes.
-'''
-
-def is_pathname_valid(pathname: str) -> bool:
-    '''
-    `True` if the passed pathname is a valid pathname for the current OS;
-    `False` otherwise.
-    '''
-    # If this pathname is either not a string or is but is empty, this pathname
-    # is invalid.
-    try:
-        if not isinstance(pathname, str) or not pathname:
-            return False
-
-        # Strip this pathname's Windows-specific drive specifier (e.g., `C:\`)
-        # if any. Since Windows prohibits path components from containing `:`
-        # characters, failing to strip this `:`-suffixed prefix would
-        # erroneously invalidate all valid absolute Windows pathnames.
-        _, pathname = os.path.splitdrive(pathname)
-
-        # Directory guaranteed to exist. If the current OS is Windows, this is
-        # the drive to which Windows was installed (e.g., the "%HOMEDRIVE%"
-        # environment variable); else, the typical root directory.
-        root_dirname = os.environ.get('HOMEDRIVE', 'C:') \
-            if sys.platform == 'win32' else os.path.sep
-        assert os.path.isdir(root_dirname)   # ...Murphy and her ironclad Law
-
-        # Append a path separator to this directory if needed.
-        root_dirname = root_dirname.rstrip(os.path.sep) + os.path.sep
-
-        # Test whether each path component split from this pathname is valid or
-        # not, ignoring non-existent and non-readable path components.
-        for pathname_part in pathname.split(os.path.sep):
-            try:
-                os.lstat(root_dirname + pathname_part)
-            # If an OS-specific exception is raised, its error code
-            # indicates whether this pathname is valid or not. Unless this
-            # is the case, this exception implies an ignorable kernel or
-            # filesystem complaint (e.g., path not found or inaccessible).
-            #
-            # Only the following exceptions indicate invalid pathnames:
-            #
-            # * Instances of the Windows-specific "WindowsError" class
-            #   defining the "winerror" attribute whose value is
-            #   "ERROR_INVALID_NAME". Under Windows, "winerror" is more
-            #   fine-grained and hence useful than the generic "errno"
-            #   attribute. When a too-long pathname is passed, for example,
-            #   "errno" is "ENOENT" (i.e., no such file or directory) rather
-            #   than "ENAMETOOLONG" (i.e., file name too long).
-            # * Instances of the cross-platform "OSError" class defining the
-            #   generic "errno" attribute whose value is either:
-            #   * Under most POSIX-compatible OSes, "ENAMETOOLONG".
-            #   * Under some edge-case OSes (e.g., SunOS, *BSD), "ERANGE".
-            except OSError as exc:
-                if hasattr(exc, 'winerror'):
-                    if exc.winerror == ERROR_INVALID_NAME:
-                        return False
-                elif exc.errno in {errno.ENAMETOOLONG, errno.ERANGE}:
-                    return False
-    # If a "TypeError" exception was raised, it almost certainly has the
-    # error message "embedded NUL character" indicating an invalid pathname.
-    except TypeError as exc:
-        return False
-    # If no exception was raised, all path components and hence this
-    # pathname itself are valid. (Praise be to the curmudgeonly python.)
-    else:
-        return True
-    # If any other exception was raised, this is an unrelated fatal issue
-    # (e.g., a bug). Permit this exception to unwind the call stack.
-    #
-    # Did we mention this should be shipped with Python already?
-
-def is_path_creatable(pathname: str) -> bool:
-    '''
-    `True` if the current user has sufficient permissions to create the passed
-    pathname; `False` otherwise.
-    '''
-    # Parent directory of the passed path. If empty, we substitute the current
-    # working directory (CWD) instead.
-    dirname = os.path.dirname(pathname) or os.getcwd()
-    return os.access(dirname, os.W_OK)
-
-def is_path_exists_or_creatable(pathname: str) -> bool:
-    '''
-    `True` if the passed pathname is a valid pathname for the current OS _and_
-    either currently exists or is hypothetically creatable; `False` otherwise.
-
-    This function is guaranteed to _never_ raise exceptions.
-    '''
-    try:
-        # To prevent "os" module calls from raising undesirable exceptions on
-        # invalid pathnames, is_pathname_valid() is explicitly called first.
-        return is_pathname_valid(pathname) and (
-            os.path.exists(pathname) or is_path_creatable(pathname))
-    # Report failure on non-fatal filesystem complaints (e.g., connection
-    # timeouts, permissions issues) implying this path to be inaccessible. All
-    # other exceptions are unrelated fatal issues and should not be caught here.
-    except OSError:
-        return False
-
 def is_numeric(s:str) -> bool:
     """Is a string numeric"""
     assert isinstance(s, str)
@@ -1282,16 +1138,6 @@ try:
         
 except ModuleNotFoundError:
     print('outlier_utils is not installed in this environment. pip install outlier_utils.')
-
-class List(list): #@# REFACTORED INTO datanavigator.utils
-    def next(self, val):
-        """Next element in the list closest to val."""
-        return min([x for x in self if x > val], default=max(self))
-    
-    def previous(self, val):
-        """Previous element in the list closest to val."""
-        return max([x for x in self if x < val], default=min(self))
-
 
 """
 Implimentation of Density-Based Clustering Validation "DBCV"
