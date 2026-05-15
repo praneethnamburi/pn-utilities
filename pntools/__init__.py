@@ -583,12 +583,6 @@ class ExComm:
         self.conn.close()
 
 ## extensions to basic classes
-class dotdict(dict):
-    """dot.notation access to dictionary attributes"""
-    __getattr__ = dict.get
-    __setattr__ = dict.__setitem__
-    __delattr__ = dict.__delitem__
-
 class namelist:
     """List of elements where each element has the 'name' field"""
     def __init__(self, data):
