@@ -22,8 +22,6 @@ Communication (with external processes).
 
     * AddMethods      - (Decorator) Add methods to a class
     * Mixin           - (Decorator) Grab methods from another class, and deepcopy list/dict class attributes
-    * port_properties - Implement containers with automatic method routing
-    * PortProperties  - (Decorator) for using port_properties
 
 **File system:**  
 
