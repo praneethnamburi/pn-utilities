@@ -19,9 +19,6 @@ from timeit import default_timer as timer
 
 import pandas as pd
 
-if os.name == 'nt':
-    import multiprocess
-
 import numpy as np
 
 try:
@@ -186,33 +183,6 @@ class PortProperties:
 
 
 ## File system
-def locate_command(thingToFind, requireStr=None, verbose=True):
-    """
-    Locate an executable on your computer.
-
-    :param thingToFind: string name of the executable (e.g. python)
-    :param requireStr: require path to thingToFind to have a certain string
-    :returns: Full path (like realpath) to thingToFind if it exists
-              Empty string if thing does not exist
-    """
-    if sys.platform == 'linux' or sys.platform == 'darwin':
-        queryCmd = 'which'
-    elif sys.platform == 'win32':
-        queryCmd = 'where'
-    proc = subprocess.Popen(queryCmd+' '+thingToFind, stdout=subprocess.PIPE, shell=True)
-    thingPath = proc.communicate()[0].decode('utf-8').rstrip('\n').rstrip('\r')
-    if not thingPath:
-        print('Terminal cannot find ', thingToFind)
-        return ''
-
-    if verbose:
-        print('Terminal found: ', thingPath)
-    if requireStr is not None:
-        if requireStr not in thingPath:
-            print('Path to ' + thingToFind + ' does not have ' + requireStr + ' in it!')
-            return ''
-    return thingPath
-
 class OnDisk:
     """
     Raise error if function output not on disk. Decorator.
@@ -242,23 +212,6 @@ class OnDisk:
         for dirFile in thisFileList:
             if not os.path.exists(dirFile):
                 raise FileNotFoundError(errno.ENOENT, os.strerror(errno.ENOENT), dirFile)
-
-def ospath(thingToFind, errContent=None):
-    """
-    Find file or directory.
-    
-    :param thingToFind: string input to os path
-    :param errContent=None: what to show when not found
-    :returns: Full path to thingToFind if it exists.
-              Empty string if thingToFind does not exist.
-    """
-    if errContent is None:
-        errContent = thingToFind
-    if os.path.exists(thingToFind):
-        print('Found: ', os.path.realpath(thingToFind))
-        return os.path.realpath(thingToFind)
-    print('Did not find ', errContent)
-    return ''
 
 def change_image_dpi(files, dpi:int=300, return_format:str='tif'):
     """
@@ -352,15 +305,6 @@ def inputs(func):
         inpdict = {str(k):inspect.signature(func).parameters[str(k)].default for k in inspect.signature(func).parameters.keys()}
     return inpdict
 
-def module_members(mod, includeSubModules=True):
-    """Return members of a module."""
-    members = {}
-    for name, data in inspect.getmembers(mod):
-        if name.startswith('__') or (inspect.ismodule(data) and not includeSubModules):
-            continue
-        members[name] = str(type(inspect.unwrap(data))).split("'")[1]
-    return members
-
 def properties(obj):
     """
     For an instance obj of any class, use pn.properties(obj) for a summary of properties.
@@ -370,53 +314,7 @@ def properties(obj):
     [print((k, type(getattr(obj, k)), np.shape(getattr(obj, k)))) for k in dir(obj) if '_' not in k and 'method' not in k]
 
 
-## input management
-def clean_kwargs(kwargs, kwargs_def, kwargs_alias=None):
-    """
-    Clean keyword arguments based on default values and aliasing.
-
-    :param kwargs: (dict) input kwargs that require cleaning.
-    :param kwargs_def: (dict) should have all the possible keyword arguments.
-    :param kwargs_alias: (dict) lists all possible aliases for each keyword.
-        {kw1: [kw1, kw1_alias1, ..., kw1_aliasn], ...}
-        kw1 is used inside the function, but kw1=val, kw1_alias1=val, ..., kw1_aliasn are all valid
-
-    Returns: 
-        (dict) keyword arguments after cleaning. Ensures all keywords in kwargs_def are present, and have the names used in the function.
-        (dict) remaining keyword arguments
-    """
-    if not kwargs_alias:
-        kwargs_alias = {key : [key] for key in kwargs_def.keys()}
-    kwargs_fun = deepcopy(kwargs_def)
-    kwargs_out = deepcopy(kwargs)
-    for k in kwargs_fun:
-        for ka in kwargs_alias[k]:
-            if ka in kwargs:
-                kwargs_fun[k] = kwargs_out.pop(ka)
-
-    return kwargs_fun, kwargs_out
-
-
 ## Code development
-def reload(constraint='Workspace'):
-    """
-    Reloads all modules in sys with a specified constraint.
-    :param constraint: (str) name to be present within the module's path for reload
-    Returns:
-        names of all the modules that were identified for reload.
-    """
-    all_mod = [mod for key, mod in sys.modules.items() if constraint in str(mod)]
-    reloaded_mod = []
-    for mod in all_mod:
-        try:
-            importlib.reload(mod)
-            reloaded_mod.append(mod.__name__)
-        except: # pylint: disable=bare-except 
-            #Using a specific exception creates a problem when developing with runpy (Blender development plugin workflow)
-            if '<run_path>' not in  mod.__name__:
-                print('Could not reload ' + mod.__name__)
-    return reloaded_mod
-
 class TimeIt:
     """
     Prints execution time. Decorator.
@@ -685,22 +583,6 @@ class ExComm:
         # close connection
         self.conn.close()
 
-if os.name == 'nt':
-    class Spawn:
-        def __init__(self, func):
-            self.func = func
-        def __call__(self, *args, **kwargs):
-            self._q = multiprocess.Queue()
-            self._proc = multiprocess.Process(target=self.func, args=(self._q, *args), kwargs=kwargs)
-            self._proc.start()
-            return self
-        def __neg__(self):
-            self._q.put('done')
-            self._proc.terminate()
-        def send(self, msg):
-            self._q.put(msg)
-
-
 def spawn_commands(cmds, nproc=3, verbose=False, retry=False, sleep_time=0.5, wait=True):
     """
     Spawn multiple detached processes. Originally designed for converting videos using ffmpeg.
@@ -793,17 +675,6 @@ def split_filename(fname:str) -> tuple:
     name, ext = os.path.splitext(os.path.basename(fname))
     path = os.path.dirname(fname)
     return path, name, ext
-
-def scale_data(d:np.ndarray, d_lim:tuple=None, clip:bool=True) -> np.ndarray: # scale the input between 0 and 1
-    """Scale data in a numpy array such that the entries in d_lim scale to (0,1)"""
-    if d_lim is None:
-        d_lim = (np.min(d), np.max(d))
-    do = d_lim[0]
-    dw = d_lim[1] - d_lim[0]
-    if clip:
-        d[d < d_lim[0]] = np.nan
-        d[d > d_lim[1]] = np.nan
-    return (d - do)/dw
 
 class Mapping:
     """Create a dictionary map between any two columns of a dataframe"""
