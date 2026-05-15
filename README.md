@@ -60,8 +60,6 @@ For file-pattern listing, import `pyfilemanager` directly (no longer re-exported
 **Communication:**  
 
     * ExComm         - Communicate with external programs via a socket
-    * Spawn          - Use Multiprocessing to run a function in another process (intended for using matplotlib from blender)
-    * spawn_commands - Spawn multiple detached processes.
 
 
 

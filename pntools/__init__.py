@@ -12,7 +12,6 @@ import re
 import socket
 import subprocess
 import sys
-import time
 from copy import deepcopy
 from pathlib import Path
 from timeit import default_timer as timer
@@ -583,46 +582,6 @@ class ExComm:
         # close connection
         self.conn.close()
 
-def spawn_commands(cmds, nproc=3, verbose=False, retry=False, sleep_time=0.5, wait=True):
-    """
-    Spawn multiple detached processes. Originally designed for converting videos using ffmpeg.
-    cmds is a list of commands, and each command is a list that can be supplied to subprocess.Popen
-    """
-    n_running = lambda: sum([int(p.poll() is None) for p in all_proc])
-    all_proc = []
-    cmd_count = 0
-    if nproc > len(cmds):
-        nproc = len(cmds)
-
-    while True:
-        if n_running() < nproc and cmd_count < len(cmds):
-            if os.name == 'nt':
-                # CREATE_NO_WINDOW = 0x08000000: suppress the console window for child ffmpeg etc.
-                # shell=False lets Popen quote argv entries containing spaces correctly on Windows.
-                # creationflags=0x00000008 will spawn in a new window
-                all_proc.append(subprocess.Popen(cmds[cmd_count], creationflags=0x08000000))
-            else:
-                all_proc.append(subprocess.Popen(cmds[cmd_count], stderr=subprocess.STDOUT, stdout=subprocess.PIPE))
-            time.sleep(sleep_time)
-            if all_proc[-1].poll() == 1 and retry:
-                # process exited - probably graphics card out of memory
-                all_proc.pop()
-                if nproc > 1:
-                    nproc -= 1
-            else:
-                cmd_count += 1
-            if verbose:
-                print({'Poll': [p.poll() for p in all_proc], 'Running': n_running()})
-            if cmd_count == len(cmds):
-                break
-    
-    if wait:
-        while n_running() > 0:
-            time.sleep(sleep_time)
-
-    return all_proc
-
-
 ## extensions to basic classes
 class dotdict(dict):
     """dot.notation access to dictionary attributes"""
@@ -670,74 +629,16 @@ def flip_nested_dict(data:dict) -> dict:
             flipped[subkey][key] = subval
     return flipped
 
-## Simple operations
-def split_filename(fname:str) -> tuple:
-    name, ext = os.path.splitext(os.path.basename(fname))
-    path = os.path.dirname(fname)
-    return path, name, ext
-
 class Mapping:
     """Create a dictionary map between any two columns of a dataframe"""
     def __init__(self, df:pd.DataFrame):
         self.df = df
-    
+
     def __call__(self, left_col_name:str, right_col_name:str, row_selector=None) -> dict:
         if row_selector is None:
             row_selector = lambda k,v: True
         ret = pd.Series(self.df[right_col_name].values,index=self.df[left_col_name]).to_dict()
         return {k:v for k,v in ret.items() if row_selector(k,v)}
-    
-def is_numeric(s:str) -> bool:
-    """Is a string numeric"""
-    assert isinstance(s, str)
-    return s.removeprefix('-').replace('.','',1).replace('e-','',1).replace('e','',1).isdigit()
-
-def to_number(s:str):
-    """If string is a number, return the number, otherwise return the original string"""
-    if not isinstance(s, str):
-        return s
-    if is_numeric(s):
-        return eval(s.lstrip('0'))
-    return s
-
-# wrapper around dateutil to check if a string is or has a date
-try: # YET to be tested thoroughly
-    from dateutil.parser import parse
-    def is_date(s:str) -> bool:
-        """Check is string is a date"""
-        try: 
-            parse(s, fuzzy=False)
-            return True
-        except ValueError:
-            return False
-    
-    def has_date(s:str) -> bool:
-        """Check is string is a date"""
-        try: 
-            parse(s, fuzzy=True)
-            return True
-        except ValueError:
-            return False
-    
-    def to_date(s:str, strict=False):
-        if not isinstance(s, str):
-            return s
-        if strict:
-            if is_date(s):
-                return parse(s, fuzzy=False)
-            return s
-
-        if has_date(s):
-            if is_date(s):
-                return parse(s, fuzzy=False)
-            return parse(s, fuzzy_with_tokens=True)[0]
-        return s # doesn't have a date, function doesn't do any transform
-
-    def to_date_or_number(s:str):
-        return to_date(to_number(s), strict=True)
-    
-except (ModuleNotFoundError, ImportError):
-        raise('Install python-dateutil to use pntools.is_date. e.g. pip install python-dateutil')
 
 
 try:
