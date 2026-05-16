@@ -1,5 +1,20 @@
 # Reusable utilities across projects
 
+> **This repository is semi-retired.**
+>
+> As of 2026-05-15, **no active code consumers of `pntools` remain across the
+> portfolio**. Every helper that had downstream callers has been migrated to a
+> real home — `pysampled`, `datanavigator`, `pyfilemanager`, `datanest`,
+> `bpn/utils.py`, or `pn-projects/projects/__init__.py`. The code that remains
+> in `pntools/__init__.py` is essentially dead weight; cleaning it up is **not a
+> current priority**. The two submodule shims `pntools/sampled.py` and
+> `pntools/gui.py` are kept as pickle-compat surfaces (~292 cached pickles
+> reference `pntools.sampled.Data` as their `__module__`) and will be retired
+> with the portfolio-wide pickle upgrade.
+>
+> Repository status is therefore **dormant**. New work happens in the
+> graduated packages.
+
 Praneeth's tools for making life easy while coding in python. These utilities only depend on packages available through conda or pypi.
 
 ## Organization
