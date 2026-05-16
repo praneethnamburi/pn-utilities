@@ -20,12 +20,6 @@ import pandas as pd
 
 import numpy as np
 
-try:
-    BLENDER_MODE = True
-    import bpy
-except ImportError:
-    BLENDER_MODE = False
-
 import pyfilemanager
 
 
@@ -478,81 +472,6 @@ class ExComm:
     def __neg__(self):
         # close connection
         self.conn.close()
-
-## extensions to basic classes
-class namelist:
-    """List of elements where each element has the 'name' field"""
-    def __init__(self, data):
-        self.data = list(data)
-    
-    @property
-    def names(self):
-        return [x.name for x in self.data]
-    
-    def __getitem__(self, key):
-        if key not in self.names:
-            if isinstance(key, int):
-                return self.data[key]
-            else:
-                print(self.names)
-                raise KeyError
-        return {d.name : d for d in self.data}[key]
-
-class nameidlist(namelist):
-    """List of elements where each element has 'name' AND 'id' fields."""
-    @property
-    def ids(self):
-        return [x.id for x in self.data]
-
-    def __call__(self, key=None):
-        if key is None:
-            print(self.ids)
-            return
-        return {x.id:x for x in self.data}[key]
-
-def flip_nested_dict(data:dict) -> dict:
-    """Flip the hierarchy in a nested dictionary"""
-    flipped = {}
-    for key, val in data.items():
-        for subkey, subval in val.items():
-            if subkey not in flipped:
-                flipped[subkey] = {}
-            flipped[subkey][key] = subval
-    return flipped
-
-class Mapping:
-    """Create a dictionary map between any two columns of a dataframe"""
-    def __init__(self, df:pd.DataFrame):
-        self.df = df
-
-    def __call__(self, left_col_name:str, right_col_name:str, row_selector=None) -> dict:
-        if row_selector is None:
-            row_selector = lambda k,v: True
-        ret = pd.Series(self.df[right_col_name].values,index=self.df[left_col_name]).to_dict()
-        return {k:v for k,v in ret.items() if row_selector(k,v)}
-
-
-try:
-    import portion as P
-
-    # extend portion functionality in the class below
-    class PNInterval(P.Interval):
-        @property
-        def atomic_durations(self):
-            return [xi.upper - xi.lower for xi in self]
-        
-        @property
-        def duration(self):
-            return sum(self.atomic_durations)
-        
-        @property
-        def fraction(self):
-            # fractional duration relative to the enclosure
-            return self.duration/self.enclosure.duration
-        
-    portion = P.create_api(PNInterval)
-except ModuleNotFoundError:
-    print('portion is not installed in this environment. conda install -c conda-forge portion.')
 
 def apply_to_files(file_selectors, include=(), exclude=(), ret_type=list):
     """Decorator for functions/classes whose first argument is a file name. 
