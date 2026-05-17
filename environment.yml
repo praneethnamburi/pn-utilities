@@ -14,7 +14,6 @@ dependencies:
   - scipy
   - pyfilemanager
   - pip:
-      - decord
       - opencv-contrib-python
       - pysampled
       - datanavigator
